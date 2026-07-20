@@ -490,8 +490,12 @@
   let ready = false;
   let autoBackups = [];
 
-  // --- Google Sheet locked sync state ---
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbzA0IcnSUSiR97w7Etpm0a3CzCV1D5TP6AGBWfsEFUEa1pbFrBMzLiRzy9RVp2yCh0/exec';
+  // --- Google Sheet sync state (per-school, configurable from Admin Controls) ---
+  const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzA0IcnSUSiR97w7Etpm0a3CzCV1D5TP6AGBWfsEFUEa1pbFrBMzLiRzy9RVp2yCh0/exec';
+  let GAS_URL = '';
+  let GAS_TOKEN = '';
+  try { GAS_URL = localStorage.getItem('ekps_gas_url') || DEFAULT_GAS_URL; } catch(e){ GAS_URL = DEFAULT_GAS_URL; }
+  try { GAS_TOKEN = localStorage.getItem('ekps_gas_token') || ''; } catch(e){ GAS_TOKEN = ''; }
   let syncStatus = 'idle'; // idle | syncing | synced | error | offline
   let syncStatusMsg = '';
 
@@ -749,7 +753,7 @@
   }
   function syncIndicatorHtml(){
     const map = {
-      idle: ['#9AA5B8', 'Google Sheet Connected'],
+      idle: gasConfigured() ? ['#9AA5B8', 'Google Sheet Connected'] : ['#9AA5B8', 'Local Storage Only (Sheet Not Connected)'],
       syncing: ['#B9862A', 'Google Sheet se sync ho raha hai&hellip;'],
       synced: ['#2F8F5B', 'Google Sheet se sync&nbsp;✓'],
       error: ['#C1502E', 'Sync fail — ' + esc(syncStatusMsg || 'connection error')],
@@ -760,14 +764,19 @@
   }
   function gasConfigured(){ return !!(GAS_URL && GAS_URL.trim()); }
   function gsRequestGetAll(){
-    return fetch(GAS_URL + (GAS_URL.includes('?') ? '&' : '?') + 'action=get', { method:'GET' })
+    const tokQ = GAS_TOKEN ? ('&token=' + encodeURIComponent(GAS_TOKEN)) : '';
+    return fetch(GAS_URL + (GAS_URL.includes('?') ? '&' : '?') + 'action=get' + tokQ, { method:'GET' })
       .then(r=>r.json());
+  }
+  function gsRequestPing(url, token){
+    const u = url + (url.includes('?') ? '&' : '?') + 'action=ping' + (token ? ('&token=' + encodeURIComponent(token)) : '');
+    return fetch(u, { method:'GET' }).then(r=>r.json());
   }
   function gsRequestSet(key, value){
     return fetch(GAS_URL, {
       method:'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight on Apps Script
-      body: JSON.stringify({ action:'set', key, value: JSON.stringify(value) })
+      body: JSON.stringify({ action:'set', key, value: JSON.stringify(value), token: GAS_TOKEN || undefined })
     }).then(r=>r.json());
   }
   function pushToSheet(key, value){
@@ -777,6 +786,30 @@
       if (res && res.ok) setSyncStatus('synced');
       else setSyncStatus('error', (res && res.error) || 'unknown');
     }).catch(err=>{ setSyncStatus('error', err.message || 'network error'); });
+  }
+  // Naya school connect karte waqt: URL/token test karo, save karo, aur turant sync karo.
+  // (Ye function KV_Store tab khud ban jane deta hai — Apps Script side pehli request par hi
+  //  auto-create kar deta hai, isliye alag se "setup" step ki zaroorat nahi.)
+  function connectToSheet(url, token){
+    url = (url || '').trim();
+    if (!url){ toast('Pehle Web App URL daalein'); return Promise.reject(new Error('no url')); }
+    setSyncStatus('syncing');
+    return gsRequestPing(url, token).then(res=>{
+      if (!res || !res.ok){
+        setSyncStatus('error', (res && res.error) || 'connection failed');
+        toast('Connect nahi ho paya — URL/token check karein: ' + ((res && res.error) || 'unknown error'));
+        throw new Error('ping failed');
+      }
+      GAS_URL = url; GAS_TOKEN = token || '';
+      try { localStorage.setItem('ekps_gas_url', GAS_URL); } catch(e){}
+      try { localStorage.setItem('ekps_gas_token', GAS_TOKEN); } catch(e){}
+      toast('Google Sheet connect ho gayi — data sync ho raha hai');
+      loadData();
+      return res;
+    }).catch(err=>{
+      setSyncStatus('error', err.message || 'network error');
+      throw err;
+    });
   }
 
   // ---------- data load / save ----------
@@ -3996,17 +4029,26 @@
 
     contentEl.innerHTML = `
       <div class="panel" style="margin-bottom:16px;">
-        <div class="panel-head"><h3>Google Sheet Connection Status</h3>${syncIndicatorHtml()}</div>
+        <div class="panel-head"><h3>Google Sheet Connection (Is School Ka Database)</h3>${syncIndicatorHtml()}</div>
         <div class="panel-body">
           <p style="font-size:13px; color:var(--slate); margin:0 0 14px 0; line-height:1.6;">
-            Aapka application high security ke liye is specific Google Sheet link par lock kar diya gaya hai. Students data aur entries is link par automatic sync hote rahenge.
+            Naye school ke liye: apni khud ki Google Sheet banayein, uspe Apps Script code paste karke Web App deploy karein,
+            phir neeche wo URL paste karke <b>Connect</b> dabayein. Tabs/headers apne aap ban jayenge — koi code change nahi chahiye.
           </p>
-          <div class="field">
-            <label>Web App URL (Locked)</label>
-            <input type="text" id="ekps-gas-url" value="${esc(GAS_URL)}" disabled style="background: var(--paper); color: var(--slate);"/>
+          <div class="form-grid" style="grid-template-columns: 2fr 1fr;">
+            <div class="field">
+              <label>Web App URL</label>
+              <input type="text" id="ekps-gas-url" value="${esc(GAS_URL)}" placeholder="https://script.google.com/macros/s/AKfycb.../exec"/>
+            </div>
+            <div class="field">
+              <label>Secret Key (optional)</label>
+              <input type="text" id="ekps-gas-token" value="${esc(GAS_TOKEN)}" placeholder="Apps Script me set kiya token"/>
+            </div>
           </div>
           <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <span class="btn btn-primary" id="ekps-gas-connect">🔗 Connect &amp; Sync</span>
             <span class="btn btn-accent" id="ekps-gas-sync-now">⟳ Force Data Sync Now</span>
+            <span class="btn btn-ghost" id="ekps-gas-disconnect">Disconnect (Local Only)</span>
           </div>
         </div>
       </div>
@@ -4061,6 +4103,21 @@
     document.getElementById('ekps-gas-sync-now').addEventListener('click', () => {
       loadData();
       toast('Google sheet ke sath sync refresh kiya ja raha hai...');
+    });
+
+    document.getElementById('ekps-gas-connect').addEventListener('click', () => {
+      const url = document.getElementById('ekps-gas-url').value;
+      const token = document.getElementById('ekps-gas-token').value;
+      connectToSheet(url, token).then(()=> renderBackup()).catch(()=>{});
+    });
+
+    document.getElementById('ekps-gas-disconnect').addEventListener('click', () => {
+      if (!confirm('Google Sheet se disconnect karein? Data sirf is browser (localStorage) me hi rahega.')) return;
+      GAS_URL = ''; GAS_TOKEN = '';
+      try { localStorage.setItem('ekps_gas_url', ''); localStorage.setItem('ekps_gas_token', ''); } catch(e){}
+      setSyncStatus('offline', 'disconnected');
+      toast('Disconnect ho gaya — ab data sirf is device par save hoga');
+      renderBackup();
     });
 
     document.getElementById('ekps-backup-now').addEventListener('click', () => {
