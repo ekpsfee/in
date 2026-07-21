@@ -94,6 +94,20 @@
   #ekps-root .topbar-right { display:flex; align-items:center; gap: 14px; font-size: 12px; color: var(--slate); }
   #ekps-root .content { padding: 24px 28px 60px 28px; }
 
+  #ekps-root .ekps-spinner {
+    width: 11px; height: 11px; border-radius: 50%;
+    border: 2px solid rgba(0,0,0,0.15); border-top-color: var(--saffron-dark, #C9821F);
+    display: inline-block; animation: ekps-spin .7s linear infinite;
+  }
+  @keyframes ekps-spin { to { transform: rotate(360deg); } }
+  #ekps-root .ekps-modal-overlay {
+    position: fixed; inset: 0; background: rgba(27,42,74,0.45); z-index: 200;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  #ekps-root .ekps-modal-box {
+    background: var(--card); border-radius: 12px; max-width: 460px; width: 100%;
+    padding: 22px; box-shadow: var(--shadow);
+  }
   #ekps-root .btn {
     font-family: 'Inter'; font-weight: 600; font-size: 13px;
     padding: 9px 16px; border-radius: 8px; border: 1px solid transparent;
@@ -436,6 +450,7 @@
         <div class="sub" id="ekps-subtitle">Realtime fee collection overview</div>
       </div>
       <div class="topbar-right">
+        <span id="ekps-sync-badge" style="background: var(--card); border:1px solid var(--border); padding: 4px 10px; border-radius: 20px; font-size: 11.5px; font-weight:600;"></span>
         <span id="ekps-role-badge" style="background: var(--border-strong); padding: 3px 8px; border-radius: 5px; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--ink);"></span>
         <span id="ekps-clock" class="mono"></span>
       </div>
@@ -498,6 +513,15 @@
   try { GAS_TOKEN = localStorage.getItem('ekps_gas_token') || ''; } catch(e){ GAS_TOKEN = ''; }
   let syncStatus = 'idle'; // idle | syncing | synced | error | offline
   let syncStatusMsg = '';
+
+  // --- Local-First (IndexedDB) + Sync Queue state ---
+  let ekpsDB = null;                 // IndexedDB handle
+  let syncQueue = [];                // [{id, key, value, ts, tries}]
+  let queueProcessing = false;
+  let isOnline = (typeof navigator !== 'undefined') ? navigator.onLine : true;
+  const IDB_NAME = 'ekps_local_db';
+  const IDB_VERSION = 1;
+  const IDB_STORES = ['kv_cache', 'sync_queue'];
 
   // --- Session Promotion state ---
   let promotionFromClass = null;
@@ -745,22 +769,161 @@
   }
   function invoiceReturnableQty(inv, it){ return Math.max(0, it.qty - invoiceReturnedQty(inv.id, it.itemId)); }
 
+  // ================== MODULE 1: Local-First Caching (IndexedDB) ==================
+  function idbOpen(){
+    return new Promise((resolve, reject)=>{
+      if (ekpsDB) return resolve(ekpsDB);
+      if (!('indexedDB' in window)) return reject(new Error('IndexedDB not supported'));
+      const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+      req.onupgradeneeded = (e)=>{
+        const db = e.target.result;
+        IDB_STORES.forEach(name=>{
+          if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' });
+        });
+      };
+      req.onsuccess = (e)=>{ ekpsDB = e.target.result; resolve(ekpsDB); };
+      req.onerror = (e)=> reject(e.target.error || new Error('IndexedDB open failed'));
+    });
+  }
+  function idbPut(store, record){
+    return idbOpen().then(db=> new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).put(record);
+      tx.oncomplete = ()=> resolve(record);
+      tx.onerror = (e)=> reject(e.target.error);
+    })).catch(()=>{ /* IndexedDB unavailable — silently degrade to localStorage-only mode */ });
+  }
+  function idbGet(store, id){
+    return idbOpen().then(db=> new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, 'readonly');
+      const r = tx.objectStore(store).get(id);
+      r.onsuccess = ()=> resolve(r.result || null);
+      r.onerror = (e)=> reject(e.target.error);
+    })).catch(()=> null);
+  }
+  function idbGetAll(store){
+    return idbOpen().then(db=> new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, 'readonly');
+      const r = tx.objectStore(store).getAll();
+      r.onsuccess = ()=> resolve(r.result || []);
+      r.onerror = (e)=> reject(e.target.error);
+    })).catch(()=> []);
+  }
+  function idbDelete(store, id){
+    return idbOpen().then(db=> new Promise((resolve, reject)=>{
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).delete(id);
+      tx.oncomplete = ()=> resolve(true);
+      tx.onerror = (e)=> reject(e.target.error);
+    })).catch(()=>{});
+  }
+  // Cache a collection (key => value) into IndexedDB immediately (local-first write).
+  // UI/localStorage already reflect the change synchronously; this is the durable local cache.
+  function idbCacheSet(key, value){
+    return idbPut('kv_cache', { id:key, value, ts: Date.now() });
+  }
+
+  // ================== MODULE 2: Reliable Sync Queue (Auto-Retry) ==================
+  function genId(){
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'id_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+  }
+  function queuePendingCount(){ return syncQueue.length; }
+  function persistQueue(){
+    try { localStorage.setItem('ekps_sync_queue', JSON.stringify(syncQueue)); } catch(e){}
+    // mirror into IndexedDB too, so a hard refresh mid-offline doesn't lose pending writes
+    idbOpen().then(db=>{
+      const tx = db.transaction('sync_queue', 'readwrite');
+      const store = tx.objectStore('sync_queue');
+      store.clear();
+      syncQueue.forEach(item=> store.put(item));
+    }).catch(()=>{});
+  }
+  function loadQueueFromStorage(){
+    try {
+      const r = localStorage.getItem('ekps_sync_queue');
+      syncQueue = r ? JSON.parse(r) : [];
+    } catch(e){ syncQueue = []; }
+  }
+  // Add a failed/pending write to the queue and refresh UI status.
+  function queueAdd(key, value){
+    // Collapse: if an item for the same key is already queued, replace it with the latest value
+    // (no point pushing an old students[] snapshot when a newer one is already pending).
+    const existingIdx = syncQueue.findIndex(q=>q.key===key);
+    const item = { id: genId(), key, value, ts: Date.now(), tries: 0 };
+    if (existingIdx > -1) syncQueue[existingIdx] = item; else syncQueue.push(item);
+    persistQueue();
+    setSyncStatus(isOnline ? 'syncing' : 'offline');
+  }
+  function queueRemove(id){
+    syncQueue = syncQueue.filter(q=>q.id!==id);
+    persistQueue();
+  }
+  // Process the queue one item at a time so a single stuck request can't block the rest forever;
+  // each item gets its own retry count and is requeued (not dropped) on failure.
+  function processSyncQueue(){
+    if (queueProcessing) return;
+    if (!gasConfigured()) return;
+    if (!isOnline) { setSyncStatus('offline'); return; }
+    if (!syncQueue.length){ setSyncStatus('synced'); return; }
+    queueProcessing = true;
+    setSyncStatus('syncing');
+    const next = syncQueue[0];
+    gsRequestSet(next.key, next.value).then(res=>{
+      queueProcessing = false;
+      if (res && res.ok){
+        queueRemove(next.id);
+        logAuditLocal('Force Sync', next.key + ' synced to Google Sheet');
+        if (syncQueue.length) processSyncQueue(); else setSyncStatus('synced');
+      } else {
+        next.tries = (next.tries||0) + 1;
+        persistQueue();
+        setSyncStatus('error', (res && res.error) || 'sync rejected');
+        scheduleQueueRetry();
+      }
+    }).catch(err=>{
+      queueProcessing = false;
+      next.tries = (next.tries||0) + 1;
+      persistQueue();
+      setSyncStatus(isOnline ? 'error' : 'offline', err.message || 'network error');
+      scheduleQueueRetry();
+    });
+  }
+  let queueRetryTimer = null;
+  function scheduleQueueRetry(){
+    if (queueRetryTimer) return;
+    // Exponential-ish backoff capped at 30s so we don't hammer Apps Script while offline/down.
+    const item = syncQueue[0];
+    const delay = Math.min(30000, 2000 * Math.pow(2, Math.min(4, (item && item.tries) || 0)));
+    queueRetryTimer = setTimeout(()=>{ queueRetryTimer = null; processSyncQueue(); }, delay);
+  }
+  window.addEventListener('online', ()=>{ isOnline = true; setSyncStatus(syncQueue.length ? 'syncing' : 'synced'); processSyncQueue(); });
+  window.addEventListener('offline', ()=>{ isOnline = false; setSyncStatus('offline'); });
+  // Background sweep in case a browser event was missed (laptop sleep/wake, flaky wifi, etc.)
+  setInterval(()=>{ if (ready) processSyncQueue(); }, 15000);
+
   // ---------- Google Sheet sync (Apps Script Web App bridge) ----------
   function setSyncStatus(status, msg){
     syncStatus = status; syncStatusMsg = msg || '';
     const el = document.getElementById('ekps-sync-indicator');
     if (el) el.outerHTML = syncIndicatorHtml();
+    const badge = document.getElementById('ekps-sync-badge');
+    if (badge) badge.innerHTML = syncIndicatorHtml().replace(/^<span id="ekps-sync-indicator"/, '<span');
+    const btn = document.getElementById('ekps-gas-sync-now');
+    if (btn) btn.innerHTML = syncStatus==='syncing' ? '<span class="ekps-spinner"></span> Syncing…' : '⟳ Force Data Sync Now';
   }
   function syncIndicatorHtml(){
+    const pending = queuePendingCount();
     const map = {
-      idle: gasConfigured() ? ['#9AA5B8', 'Google Sheet Connected'] : ['#9AA5B8', 'Local Storage Only (Sheet Not Connected)'],
-      syncing: ['#B9862A', 'Google Sheet se sync ho raha hai&hellip;'],
-      synced: ['#2F8F5B', 'Google Sheet se sync&nbsp;✓'],
-      error: ['#C1502E', 'Sync fail — ' + esc(syncStatusMsg || 'connection error')],
-      offline: ['#C1502E', 'Offline — localStorage se data dikh raha hai']
+      idle: gasConfigured() ? ['#9AA5B8', '⚪ Google Sheet Connected'] : ['#9AA5B8', '⚪ Local Storage Only (Sheet Not Connected)'],
+      syncing: ['#B9862A', pending ? `🟡 Syncing (${pending} pending)` : '🟡 Syncing&hellip;'],
+      synced: ['#2F8F5B', '🟢 Synced'],
+      error: ['#C1502E', pending ? `🟡 Syncing (${pending} pending) — retrying` : ('🔴 Sync fail — ' + esc(syncStatusMsg || 'connection error'))],
+      offline: ['#C1502E', pending ? `🔴 Offline (${pending} pending)` : '🔴 Offline — local mode active']
     };
     const [color, label] = map[syncStatus] || map.idle;
-    return `<span id="ekps-sync-indicator" style="display:inline-flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;border-radius:50%;background:${color};display:inline-block;"></span>${label}</span>`;
+    const spin = syncStatus==='syncing' ? '<span class="ekps-spinner" style="margin-right:4px;"></span>' : `<span style="width:7px;height:7px;border-radius:50%;background:${color};display:inline-block;"></span>`;
+    return `<span id="ekps-sync-indicator" style="display:inline-flex;align-items:center;gap:5px;" title="${pending} write(s) pending sync">${spin}${label}</span>`;
   }
   function gasConfigured(){ return !!(GAS_URL && GAS_URL.trim()); }
   function gsRequestGetAll(){
@@ -779,13 +942,39 @@
       body: JSON.stringify({ action:'set', key, value: JSON.stringify(value), token: GAS_TOKEN || undefined })
     }).then(r=>r.json());
   }
+  function gsRequestAudit(action, details){
+    if (!gasConfigured()) return Promise.resolve();
+    return fetch(GAS_URL, {
+      method:'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action:'audit', user: (currentUserRole||'unknown'), logAction: action, details, token: GAS_TOKEN || undefined })
+    }).then(r=>r.json()).catch(()=>{});
+  }
+  function logAuditLocal(action, details){
+    // Best-effort: fire-and-forget audit trail write to the Audit_Logs tab. Never blocks the UI.
+    if (gasConfigured() && isOnline) gsRequestAudit(action, details);
+  }
+  // Local-first write: apply to UI/localStorage immediately (callers already did that),
+  // cache durably to IndexedDB, then push to Google Sheets in the background.
+  // Any failure (offline, timeout, Apps Script error) lands the write in the retry queue
+  // instead of being lost.
   function pushToSheet(key, value){
+    idbCacheSet(key, value);
     if (!gasConfigured()) return;
+    if (!isOnline){ queueAdd(key, value); return; }
     setSyncStatus('syncing');
     gsRequestSet(key, value).then(res=>{
-      if (res && res.ok) setSyncStatus('synced');
-      else setSyncStatus('error', (res && res.error) || 'unknown');
-    }).catch(err=>{ setSyncStatus('error', err.message || 'network error'); });
+      if (res && res.ok){
+        setSyncStatus(syncQueue.length ? 'syncing' : 'synced');
+        if (syncQueue.length) processSyncQueue();
+      } else {
+        queueAdd(key, value);
+        processSyncQueue();
+      }
+    }).catch(()=>{
+      queueAdd(key, value);
+      processSyncQueue();
+    });
   }
   // Naya school connect karte waqt: URL/token test karo, save karo, aur turant sync karo.
   // (Ye function KV_Store tab khud ban jane deta hai — Apps Script side pehli request par hi
@@ -805,6 +994,7 @@
       try { localStorage.setItem('ekps_gas_token', GAS_TOKEN); } catch(e){}
       toast('Google Sheet connect ho gayi — data sync ho raha hai');
       loadData();
+      logAuditLocal('Connect', 'School connected to Google Sheet backend');
       return res;
     }).catch(err=>{
       setSyncStatus('error', err.message || 'network error');
@@ -996,13 +1186,22 @@
     pushToSheet('exams', exams);
   }
   
+  // Stamp updated_at + version_id on every record so the backend/UI can detect
+  // stale overwrites (Module 3: Conflict Resolution).
+  function stampVersion(rec){
+    rec.updated_at = new Date().toISOString();
+    rec.version_id = genId();
+    return rec;
+  }
   function saveStudents(){
+    students.forEach(stampVersion);
     try { localStorage.setItem('ekps_students', JSON.stringify(students)); }
     catch(e){ console.error('save students failed', e); }
     pushToSheet('students', students);
     maybeAutoBackup();
   }
   function saveEntries(){
+    entries.forEach(stampVersion);
     try { localStorage.setItem('ekps_entries', JSON.stringify(entries)); }
     catch(e){ console.error('save entries failed', e); }
     pushToSheet('entries', entries);
@@ -4021,6 +4220,45 @@
     if (pbtn) pbtn.addEventListener('click', ()=> window.print());
   }
 
+  // ================== MODULE 3: Pre-Restore Validation Modal ==================
+  // Shows a confirmation popup comparing the backup snapshot being restored against
+  // the currently live data, so an admin can't blindly overwrite newer data with an
+  // older backup. onConfirm() only runs if the user explicitly proceeds.
+  function showRestoreConfirmModal(opts, onConfirm){
+    const { whenLabel, backupStudentCount, backupEntryCount, source } = opts;
+    const currentStudentCount = students.length;
+    const delta = backupStudentCount - currentStudentCount;
+    const deltaNote = delta === 0 ? '' :
+      (delta < 0
+        ? `<div style="margin-top:8px; padding:8px 10px; background:var(--rust-bg); color:var(--rust); border-radius:7px; font-size:12.5px;">⚠ Is backup me current se <b>${Math.abs(delta)} kam students</b> hain — restore karne par ye students hat jayenge.</div>`
+        : `<div style="margin-top:8px; padding:8px 10px; background:var(--amber-bg); color:var(--amber); border-radius:7px; font-size:12.5px;">ℹ Is backup me current se ${delta} zyada students hain.</div>`);
+    const overlay = document.createElement('div');
+    overlay.className = 'ekps-modal-overlay';
+    overlay.innerHTML = `
+      <div class="ekps-modal-box">
+        <h3 class="disp" style="margin:0 0 10px 0; font-size:16px;">⚠ Restore Confirm Karein</h3>
+        <p style="font-size:13.5px; line-height:1.6; margin:0 0 4px 0;">
+          Aap <b>${esc(whenLabel)}</b> ka backup restore kar rahe hain${source ? ' (' + esc(source) + ')' : ''}.
+          Isme <b>${backupStudentCount} Students</b> hain (Current: <b>${currentStudentCount}</b>)
+          aur <b>${backupEntryCount} Fee Entries</b> hain (Current: <b>${entries.length}</b>).
+        </p>
+        ${deltaNote}
+        <p style="font-size:13px; color:var(--rust); margin:12px 0 16px 0;">Kya aap proceed karna chahte hain? Ye action maujooda data ko replace kar dega.</p>
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+          <span class="btn btn-ghost" id="ekps-restore-cancel">Cancel</span>
+          <span class="btn btn-danger" id="ekps-restore-proceed" style="border-color:var(--rust); background:var(--rust-bg);">Proceed &amp; Restore</span>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e)=>{ if (e.target === overlay) overlay.remove(); });
+    overlay.querySelector('#ekps-restore-cancel').addEventListener('click', ()=> overlay.remove());
+    overlay.querySelector('#ekps-restore-proceed').addEventListener('click', ()=>{
+      overlay.remove();
+      logAuditLocal('Restore', `${source||'backup'} @ ${whenLabel} — ${backupStudentCount} students`);
+      onConfirm();
+    });
+  }
+
   // ---------- BACKUP & SYNC ----------
   function renderBackup(){
     const sorted = autoBackups.slice().sort((a,b)=> b.ts - a.ts);
@@ -4098,11 +4336,39 @@
           </div>
           <span class="btn btn-danger" id="ekps-restore-btn" style="border-color:var(--rust); background:var(--rust-bg);">⬆ Restore Data</span>
         </div>
+      </div>
+      <div class="panel" style="margin-top:16px;">
+        <div class="panel-head"><h3>Audit Trail (Google Sheet · Audit_Logs tab)</h3>
+          <span class="btn btn-ghost btn-sm" id="ekps-audit-refresh">↻ Refresh</span></div>
+        <div class="panel-body" id="ekps-audit-list">
+          <div class="empty-state">${gasConfigured() ? 'Refresh dabayein taaki latest audit logs Google Sheet se load ho.' : 'Audit logs dekhne ke liye pehle Google Sheet connect karein.'}</div>
+        </div>
       </div>`;
 
     document.getElementById('ekps-gas-sync-now').addEventListener('click', () => {
       loadData();
+      processSyncQueue();
       toast('Google sheet ke sath sync refresh kiya ja raha hai...');
+    });
+
+    const auditBtn = document.getElementById('ekps-audit-refresh');
+    if (auditBtn) auditBtn.addEventListener('click', () => {
+      const listEl = document.getElementById('ekps-audit-list');
+      if (!gasConfigured()) { toast('Pehle Google Sheet connect karein'); return; }
+      listEl.innerHTML = '<div class="empty-state"><span class="ekps-spinner"></span> Loading…</div>';
+      const tokQ = GAS_TOKEN ? ('&token=' + encodeURIComponent(GAS_TOKEN)) : '';
+      fetch(GAS_URL + (GAS_URL.includes('?') ? '&' : '?') + 'action=getAuditLogs' + tokQ)
+        .then(r=>r.json())
+        .then(res=>{
+          const logs = (res && res.ok && Array.isArray(res.logs)) ? res.logs.slice().reverse() : [];
+          listEl.innerHTML = logs.length ? logs.slice(0,50).map(l=>`
+            <div class="recent-row">
+              <div><div class="recent-name">${esc(l.action||'')}</div>
+              <div class="recent-meta">${esc(l.user||'')} &middot; ${esc(l.details||'')}</div></div>
+              <span class="mono" style="font-size:11px; color:var(--slate);">${esc(l.timestamp||'')}</span>
+            </div>`).join('') : '<div class="empty-state">Koi audit log nahi mila.</div>';
+        })
+        .catch(()=>{ listEl.innerHTML = '<div class="empty-state">Audit logs load nahi ho paye — connection check karein.</div>'; });
     });
 
     document.getElementById('ekps-gas-connect').addEventListener('click', () => {
@@ -4122,6 +4388,7 @@
 
     document.getElementById('ekps-backup-now').addEventListener('click', () => {
       snapshotNow();
+      logAuditLocal('Manual Backup', `${students.length} students, ${entries.length} entries`);
       toast('Backup snapshot ban gaya');
       renderBackup();
     });
@@ -4131,24 +4398,30 @@
         const ts = parseFloat(el.dataset.restoreAuto);
         const snap = autoBackups.find(b=>b.ts===ts);
         if (!snap) return;
-        if (!confirm(`Is ${fmtWhen(ts)} wale snapshot par restore karein? Isse maujooda data hat jayega.`)) return;
-        students = JSON.parse(JSON.stringify(snap.students));
-        entries = JSON.parse(JSON.stringify(snap.entries));
-        admissions = JSON.parse(JSON.stringify(snap.admissions || []));
-        transportRoutes = JSON.parse(JSON.stringify(snap.transportRoutes || []));
-        transportEntries = JSON.parse(JSON.stringify(snap.transportEntries || []));
-        inventoryItems = JSON.parse(JSON.stringify(snap.inventoryItems || []));
-        inventoryTxns = JSON.parse(JSON.stringify(snap.inventoryTxns || []));
-        students.forEach(s=>{ if (!Array.isArray(s.bills)) s.bills = []; });
-        saveStudents();
-        saveEntries();
-        saveAdmissions();
-        saveTransportRoutes();
-        saveTransportEntries();
-        saveInventoryItems();
-        saveInventoryTxns();
-        toast('Auto-backup se restore ho gaya');
-        renderBackup();
+        showRestoreConfirmModal({
+          whenLabel: fmtWhen(ts),
+          backupStudentCount: (snap.students||[]).length,
+          backupEntryCount: (snap.entries||[]).length,
+          source: 'Auto-Backup'
+        }, ()=>{
+          students = JSON.parse(JSON.stringify(snap.students));
+          entries = JSON.parse(JSON.stringify(snap.entries));
+          admissions = JSON.parse(JSON.stringify(snap.admissions || []));
+          transportRoutes = JSON.parse(JSON.stringify(snap.transportRoutes || []));
+          transportEntries = JSON.parse(JSON.stringify(snap.transportEntries || []));
+          inventoryItems = JSON.parse(JSON.stringify(snap.inventoryItems || []));
+          inventoryTxns = JSON.parse(JSON.stringify(snap.inventoryTxns || []));
+          students.forEach(s=>{ if (!Array.isArray(s.bills)) s.bills = []; });
+          saveStudents();
+          saveEntries();
+          saveAdmissions();
+          saveTransportRoutes();
+          saveTransportEntries();
+          saveInventoryItems();
+          saveInventoryTxns();
+          toast('Auto-backup se restore ho gaya');
+          renderBackup();
+        });
       });
     });
 
@@ -4188,24 +4461,31 @@
             toast('Ye file valid backup nahi hai');
             return;
           }
-          if (!confirm(`Restore karein? Isse maujooda data hat jayega.`)) return;
-          data.students.forEach(s=>{ if (!Array.isArray(s.bills)) s.bills = []; if (typeof s.mobNo !== 'string') s.mobNo = s.mobNo ? String(s.mobNo) : ''; });
-          students = data.students;
-          entries = data.entries;
-          admissions = Array.isArray(data.admissions) ? data.admissions : [];
-          transportRoutes = Array.isArray(data.transportRoutes) ? data.transportRoutes : [];
-          transportEntries = Array.isArray(data.transportEntries) ? data.transportEntries : [];
-          inventoryItems = Array.isArray(data.inventoryItems) ? data.inventoryItems : [];
-          inventoryTxns = Array.isArray(data.inventoryTxns) ? data.inventoryTxns : [];
-          saveStudents();
-          saveEntries();
-          saveAdmissions();
-          saveTransportRoutes();
-          saveTransportEntries();
-          saveInventoryItems();
-          saveInventoryTxns();
-          toast('Data restore ho gaya');
-          renderBackup();
+          const whenLabel = data.exportedAt ? fmtWhen(new Date(data.exportedAt).getTime()) : (file.name || 'uploaded file');
+          showRestoreConfirmModal({
+            whenLabel,
+            backupStudentCount: data.students.length,
+            backupEntryCount: data.entries.length,
+            source: 'File Upload'
+          }, ()=>{
+            data.students.forEach(s=>{ if (!Array.isArray(s.bills)) s.bills = []; if (typeof s.mobNo !== 'string') s.mobNo = s.mobNo ? String(s.mobNo) : ''; });
+            students = data.students;
+            entries = data.entries;
+            admissions = Array.isArray(data.admissions) ? data.admissions : [];
+            transportRoutes = Array.isArray(data.transportRoutes) ? data.transportRoutes : [];
+            transportEntries = Array.isArray(data.transportEntries) ? data.transportEntries : [];
+            inventoryItems = Array.isArray(data.inventoryItems) ? data.inventoryItems : [];
+            inventoryTxns = Array.isArray(data.inventoryTxns) ? data.inventoryTxns : [];
+            saveStudents();
+            saveEntries();
+            saveAdmissions();
+            saveTransportRoutes();
+            saveTransportEntries();
+            saveInventoryItems();
+            saveInventoryTxns();
+            toast('Data restore ho gaya');
+            renderBackup();
+          });
         } catch(err){
           toast('File padhne me error — sahi .json file chunein');
         }
@@ -4709,7 +4989,10 @@
   setInterval(tickClock, 1000*30);
   tickClock();
 
+  loadQueueFromStorage();
   loadData();
   render();
+  setSyncStatus(syncStatus);
+  if (syncQueue.length) processSyncQueue();
 })();
 </script>
