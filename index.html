@@ -4292,8 +4292,6 @@
         <div class="panel-head"><h3>Google Sheet Connection (Is School Ka Database)</h3>${syncIndicatorHtml()}</div>
         <div class="panel-body">
           <p style="font-size:13px; color:var(--slate); margin:0 0 14px 0; line-height:1.6;">
-            Naye school ke liye: apni khud ki Google Sheet banayein, uspe Apps Script code paste karke Web App deploy karein,
-            phir neeche wo URL paste karke <b>Connect</b> dabayein. Tabs/headers apne aap ban jayenge — koi code change nahi chahiye.
           </p>
           ${(syncStatus==='error' || syncStatus==='offline') && syncStatusMsg ? `
           <div style="font-size:12.5px; background:var(--rust-bg); color:var(--rust); border:1px solid #EAD0C6; border-radius:8px; padding:9px 12px; margin:0 0 14px 0;">
