@@ -506,7 +506,7 @@
   let autoBackups = [];
 
   // --- Google Sheet sync state (per-school, configurable from Admin Controls) ---
-  const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwbC9j0vyrOVb47Y0q8asPVipuql3_yHo_TldAqIreCAcA33tZeY6OCu0Qi2fH2SYY/exec';
+  const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzkIj2dU0XbviJZM6ib3Fl7Wb0dfN49_iWJR5w059dMycQuVBom9F_w4Km-8CPOHw/exec';
   let GAS_URL = '';
   let GAS_TOKEN = '';
   try { GAS_URL = localStorage.getItem('ekps_gas_url') || DEFAULT_GAS_URL; } catch(e){ GAS_URL = DEFAULT_GAS_URL; }
