@@ -506,7 +506,7 @@
   let autoBackups = [];
 
   // --- Google Sheet sync state (per-school, configurable from Admin Controls) ---
-  const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbz8bfKEumkGQqIi7KxHze8A5uaVFRSTM_DbpOTGx3NxhRuFrbh1kF0XFxHVMQkc4Fs/exec';
+  const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzkIj2dU0XbviJZM6ib3Fl7Wb0dfN49_iWJR5w059dMycQuVBom9F_w4Km-8CPOHw/exec';
   let GAS_URL = '';
   let GAS_TOKEN = '';
   try { GAS_URL = localStorage.getItem('ekps_gas_url') || DEFAULT_GAS_URL; } catch(e){ GAS_URL = DEFAULT_GAS_URL; }
@@ -914,33 +914,55 @@
   }
   function syncIndicatorHtml(){
     const pending = queuePendingCount();
+    // Real failure reason (set by setSyncStatus via msg param). Shown even while items
+    // are still pending in the queue, so a stuck sync doesn't just say "retrying" forever
+    // with no clue why — pehle yahan asli error message chhup jata tha jab pending>0 hota tha.
+    const reason = syncStatusMsg ? esc(syncStatusMsg) : '';
     const map = {
       idle: gasConfigured() ? ['#9AA5B8', '⚪ Google Sheet Connected'] : ['#9AA5B8', '⚪ Local Storage Only (Sheet Not Connected)'],
       syncing: ['#B9862A', pending ? `🟡 Syncing (${pending} pending)` : '🟡 Syncing&hellip;'],
       synced: ['#2F8F5B', '🟢 Synced'],
-      error: ['#C1502E', pending ? `🟡 Syncing (${pending} pending) — retrying` : ('🔴 Sync fail — ' + esc(syncStatusMsg || 'connection error'))],
+      error: ['#C1502E', pending ? `🔴 Sync stuck (${pending} pending)${reason ? ' — ' + reason : ' — retrying'}` : ('🔴 Sync fail — ' + (reason || 'connection error'))],
       offline: ['#C1502E', pending ? `🔴 Offline (${pending} pending)` : '🔴 Offline — local mode active']
     };
     const [color, label] = map[syncStatus] || map.idle;
     const spin = syncStatus==='syncing' ? '<span class="ekps-spinner" style="margin-right:4px;"></span>' : `<span style="width:7px;height:7px;border-radius:50%;background:${color};display:inline-block;"></span>`;
-    return `<span id="ekps-sync-indicator" style="display:inline-flex;align-items:center;gap:5px;" title="${pending} write(s) pending sync">${spin}${label}</span>`;
+    const titleTxt = `${pending} write(s) pending sync` + (reason ? ` — ${syncStatusMsg}` : '');
+    return `<span id="ekps-sync-indicator" style="display:inline-flex;align-items:center;gap:5px;" title="${esc(titleTxt)}">${spin}${label}</span>`;
   }
   function gasConfigured(){ return !!(GAS_URL && GAS_URL.trim()); }
+  // Apps Script sometimes replies with an HTML page instead of JSON — e.g. a Google login
+  // wall (deployment access not set to "Anyone"), a 404 (deployment URL revoked/redeployed),
+  // or a script error page. r.json() would throw a vague "Unexpected token <" in that case,
+  // which the retry loop swallows silently. Reading the body ourselves gives a clear reason
+  // that actually shows up in the sync indicator now.
+  function parseGasResponse(r){
+    return r.text().then(txt=>{
+      let data;
+      try { data = JSON.parse(txt); }
+      catch(e){
+        if (!r.ok) throw new Error('HTTP ' + r.status + ' from Apps Script');
+        if (/accounts\.google\.com|ServiceLogin/i.test(txt)) throw new Error('Apps Script login-wall par redirect ho raha hai — Deploy > Web app > "Who has access" ko "Anyone" par set karein');
+        throw new Error('Apps Script se JSON nahi mila (deployment ya doGet/doPost check karein)');
+      }
+      return data;
+    });
+  }
   function gsRequestGetAll(){
     const tokQ = GAS_TOKEN ? ('&token=' + encodeURIComponent(GAS_TOKEN)) : '';
     return fetch(GAS_URL + (GAS_URL.includes('?') ? '&' : '?') + 'action=get' + tokQ, { method:'GET' })
-      .then(r=>r.json());
+      .then(parseGasResponse);
   }
   function gsRequestPing(url, token){
     const u = url + (url.includes('?') ? '&' : '?') + 'action=ping' + (token ? ('&token=' + encodeURIComponent(token)) : '');
-    return fetch(u, { method:'GET' }).then(r=>r.json());
+    return fetch(u, { method:'GET' }).then(parseGasResponse);
   }
   function gsRequestSet(key, value){
     return fetch(GAS_URL, {
       method:'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight on Apps Script
       body: JSON.stringify({ action:'set', key, value: JSON.stringify(value), token: GAS_TOKEN || undefined })
-    }).then(r=>r.json());
+    }).then(parseGasResponse);
   }
   function gsRequestAudit(action, details){
     if (!gasConfigured()) return Promise.resolve();
@@ -4273,6 +4295,10 @@
             Naye school ke liye: apni khud ki Google Sheet banayein, uspe Apps Script code paste karke Web App deploy karein,
             phir neeche wo URL paste karke <b>Connect</b> dabayein. Tabs/headers apne aap ban jayenge — koi code change nahi chahiye.
           </p>
+          ${(syncStatus==='error' || syncStatus==='offline') && syncStatusMsg ? `
+          <div style="font-size:12.5px; background:var(--rust-bg); color:var(--rust); border:1px solid #EAD0C6; border-radius:8px; padding:9px 12px; margin:0 0 14px 0;">
+            <b>Sync error:</b> ${esc(syncStatusMsg)}${queuePendingCount() ? ` &middot; ${queuePendingCount()} write(s) pending, retry ho raha hai` : ''}
+          </div>` : ''}
           <div class="form-grid" style="grid-template-columns: 2fr 1fr;">
             <div class="field">
               <label>Web App URL</label>
@@ -4346,9 +4372,16 @@
       </div>`;
 
     document.getElementById('ekps-gas-sync-now').addEventListener('click', () => {
-      loadData();
-      processSyncQueue();
-      toast('Google sheet ke sath sync refresh kiya ja raha hai...');
+      // Agar local changes abhi tak Sheet par push nahi hue (pending queue), unhe pehle
+      // push karo — pehle yahan loadData() turant Sheet se purana data khinch kar in
+      // un-synced local changes ko overwrite kar deta tha.
+      if (syncQueue.length){
+        processSyncQueue();
+        toast(`${syncQueue.length} pending change(s) Google Sheet par push kiye ja rahe hain...`);
+      } else {
+        loadData();
+        toast('Google sheet ke sath sync refresh kiya ja raha hai...');
+      }
     });
 
     const auditBtn = document.getElementById('ekps-audit-refresh');
