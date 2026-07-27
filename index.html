@@ -172,6 +172,32 @@
   #ekps-root .form-grid { display:grid; grid-template-columns: repeat(3,1fr); gap: 0 16px; }
   #ekps-root .form-grid.cols-4 { grid-template-columns: repeat(4,1fr); }
 
+  #ekps-root .modal-section-head {
+    display:flex; align-items:center; gap:9px; margin: 4px 0 12px 0; padding-top: 14px; border-top: 1px solid var(--border);
+  }
+  #ekps-root .modal-section-head:first-child { padding-top:0; border-top:none; margin-top:0; }
+  #ekps-root .modal-section-head .msh-num {
+    width:20px; height:20px; border-radius:50%; background: var(--ink); color:#fff; font-family:'Sora'; font-weight:700;
+    font-size:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  #ekps-root .modal-section-head .msh-title { font-family:'Sora'; font-weight:700; font-size:13px; color: var(--ink); }
+  #ekps-root .modal-section-head .msh-sub { font-size:11px; color: var(--slate); margin-top:1px; }
+
+  #ekps-root .decl-box {
+    background: var(--paper); border: 1px solid var(--border-strong); border-radius: 9px;
+    padding: 12px 14px; max-height: 170px; overflow-y: auto; font-size: 12px; line-height: 1.6; color: var(--ink-2); margin-bottom: 12px;
+  }
+  #ekps-root .decl-box h4 { font-family:'Sora'; font-size:12px; margin: 10px 0 3px 0; color: var(--ink); }
+  #ekps-root .decl-box h4:first-child { margin-top:0; }
+  #ekps-root .decl-box p { margin: 0 0 4px 0; }
+  #ekps-root .decl-check {
+    display:flex; align-items:flex-start; gap:9px; background:#fff; border:1px solid var(--border-strong);
+    border-radius:9px; padding:11px 13px; cursor:pointer;
+  }
+  #ekps-root .decl-check input { margin-top:2px; width:16px; height:16px; flex-shrink:0; accent-color: var(--saffron-dark); }
+  #ekps-root .decl-check span { font-size:12.5px; line-height:1.5; color: var(--ink); }
+  #ekps-root .decl-check.warn { border-color: var(--rust); box-shadow: 0 0 0 3px rgba(193,80,46,0.12); }
+
   #ekps-root .pick-preview {
     margin-top: -4px; margin-bottom: 14px; padding: 10px 12px; border-radius: 8px;
     background: var(--paper); border: 1px dashed var(--border-strong); font-size: 12.5px; color: var(--ink);
@@ -2010,26 +2036,33 @@
   }
 
   // ---------- ADMISSION (STUDENT REGISTRATION & ADMISSION FORM) ----------
+  const DECLARATION_HTML = `
+    <h4>1. अभिभावक का घोषणा पत्र (Parent's Declaration)</h4>
+    <p>मैं यह प्रमाणित करता/करती हूँ कि ऊपर दी गई सभी जानकारी मेरी जानकारी में पूरी तरह सही है। मैं जानता/जानती हूँ कि केवल रजिस्ट्रेशन फॉर्म जमा करने से स्कूल मेरे बच्चे को एडमिशन देने के लिए बाध्य नहीं है। मुझे यह भी स्वीकार है कि एडमिशन के विषय में स्कूल के प्रिंसिपल का फैसला ही आखिरी होगा और मुझे मान्य होगा।</p>
+    <h4>2. जिम्मेदारी का पत्र (Indemnity Bond)</h4>
+    <p>स्कूल में रहने के दौरान यदि मेरे बच्चे को कोई चोट लगती है या किसी भी तरह की अनहोनी होती है, तो इसके लिए मैं स्कूल प्रशासन को जिम्मेदार नहीं ठहराऊँगा/ठहराऊँगी।</p>
+    <h4>3. नाम वापस लेने की प्रक्रिया (Withdrawal Policy)</h4>
+    <p>मैं समझता/समझती हूँ कि यदि मैं अपने बच्चे का नाम स्कूल से वापस लेना चाहता/चाहती हूँ, तो स्कूल को 3 महीने पहले सूचना देनी होगी। मैं यह भी जानता/जानती हूँ कि ऐसी स्थिति में जमा की गई कोई भी फीस वापस (Refund) नहीं मिलेगी।</p>`;
+
   function admissionModal(){
     const editing = editingAdmissionId != null;
     const a = editing ? admissions.find(x=>x.id===editingAdmissionId) : {
       id: nextAdmissionId(), admissionNo: nextAdmissionNo(), name:'', dob:'', gender:'Male', category:'General',
       fatherName:'', motherName:'', guardianMobile:'', altMobile:'', address:'', aadhaar:'',
-      previousSchool:'', classAppliedFor: CLASS_ORDER[0], bloodGroup:'', photo:'', admissionDate: todayISO(), status:'Registered'
+      previousSchool:'', classAppliedFor: CLASS_ORDER[0], bloodGroup:'', photo:'', admissionDate: todayISO(), status:'Registered',
+      declarationAccepted: false
     };
     let pendingPhoto = a.photo || '';
     modalRoot.innerHTML = `
       <div class="modal-backdrop" id="ekps-adm-bg">
-        <div class="modal" style="width:640px;">
+        <div class="modal" style="width:680px;">
           <div class="modal-head"><h3>${editing?'Edit Registration':'Student Registration & Admission Form'}</h3>
             <div class="icon-btn" id="ekps-adm-close">✕</div></div>
           <div class="modal-body">
-            <div class="form-grid">
-              <div class="field"><label>Admission / Reg. No.</label><input type="text" id="a-no" value="${esc(a.admissionNo)}" disabled/></div>
-              <div class="field"><label>Class Applied For</label>
-                <select id="a-cls">${CLASS_ORDER.map(c=>`<option value="${c}" ${c===a.classAppliedFor?'selected':''}>${c}</option>`).join('')}</select>
-              </div>
-              <div class="field"><label>Admission Date</label><input type="date" id="a-date" value="${a.admissionDate||todayISO()}"/></div>
+
+            <div class="modal-section-head">
+              <div class="msh-num">1</div>
+              <div><div class="msh-title">Student Personal Information</div></div>
             </div>
             <div class="form-grid">
               <div class="field" style="grid-column: span 2;"><label>Student Name</label><input type="text" id="a-name" value="${esc(a.name)}"/></div>
@@ -2045,6 +2078,31 @@
               <div class="field"><label>Blood Group</label><input type="text" id="a-blood" value="${esc(a.bloodGroup||'')}" placeholder="e.g. B+"/></div>
               <div class="field"><label>Aadhaar No.</label><input type="text" id="a-aadhaar" value="${esc(a.aadhaar||'')}" maxlength="12"/></div>
             </div>
+            <div class="field">
+              <label>Student Photo</label>
+              <div class="photo-upload">
+                <div class="photo-preview" id="a-photo-preview">${a.photo ? `<img src="${a.photo}"/>` : 'No Photo'}</div>
+                <input type="file" id="a-photo" accept="image/*" style="flex:1;"/>
+              </div>
+            </div>
+
+            <div class="modal-section-head">
+              <div class="msh-num">2</div>
+              <div><div class="msh-title">Admission &amp; Previous Academic Details</div></div>
+            </div>
+            <div class="form-grid">
+              <div class="field"><label>Admission / Reg. No.</label><input type="text" id="a-no" value="${esc(a.admissionNo)}" disabled/></div>
+              <div class="field"><label>Class Applied For</label>
+                <select id="a-cls">${CLASS_ORDER.map(c=>`<option value="${c}" ${c===a.classAppliedFor?'selected':''}>${c}</option>`).join('')}</select>
+              </div>
+              <div class="field"><label>Admission Date</label><input type="date" id="a-date" value="${a.admissionDate||todayISO()}"/></div>
+            </div>
+            <div class="field"><label>Previous School (if any)</label><input type="text" id="a-prevschool" value="${esc(a.previousSchool||'')}"/></div>
+
+            <div class="modal-section-head">
+              <div class="msh-num">3</div>
+              <div><div class="msh-title">Parent / Guardian Details</div><div class="msh-sub">पिता एवं माता का विवरण</div></div>
+            </div>
             <div class="form-grid">
               <div class="field"><label>Father's Name</label><input type="text" id="a-father" value="${esc(a.fatherName||'')}"/></div>
               <div class="field"><label>Mother's Name</label><input type="text" id="a-mother" value="${esc(a.motherName||'')}"/></div>
@@ -2054,14 +2112,17 @@
               <div class="field"><label>Alternate Mobile No.</label><input type="tel" id="a-altmob" value="${esc(a.altMobile||'')}" maxlength="15"/></div>
             </div>
             <div class="field"><label>Address</label><input type="text" id="a-address" value="${esc(a.address||'')}"/></div>
-            <div class="field"><label>Previous School (if any)</label><input type="text" id="a-prevschool" value="${esc(a.previousSchool||'')}"/></div>
-            <div class="field">
-              <label>Student Photo</label>
-              <div class="photo-upload">
-                <div class="photo-preview" id="a-photo-preview">${a.photo ? `<img src="${a.photo}"/>` : 'No Photo'}</div>
-                <input type="file" id="a-photo" accept="image/*" style="flex:1;"/>
-              </div>
+
+            <div class="modal-section-head">
+              <div class="msh-num">4</div>
+              <div><div class="msh-title">Terms &amp; Conditions</div><div class="msh-sub">नियम एवं शर्तें — कृपया ध्यान से पढ़ें</div></div>
             </div>
+            <div class="decl-box">${DECLARATION_HTML}</div>
+            <label class="decl-check" id="a-decl-wrap">
+              <input type="checkbox" id="a-decl" ${a.declarationAccepted?'checked':''}/>
+              <span>मैंने ऊपर दिया गया <b>अभिभावक घोषणा पत्र, जिम्मेदारी पत्र (Indemnity Bond)</b> एवं <b>नाम वापसी नियम</b> पढ़ और समझ लिया है, और इसे स्वीकार करता/करती हूँ। (फॉर्म का प्रिंट लेकर हस्ताक्षर करना अनिवार्य है।)</span>
+            </label>
+
           </div>
           <div class="modal-foot">
             <span class="btn btn-ghost" id="ekps-adm-cancel">Cancel</span>
@@ -2089,6 +2150,13 @@
       if (!name) { toast('Student Name daalein'); return; }
       const guardianMobile = document.getElementById('a-mob').value.trim();
       if (guardianMobile && !/^[0-9+\-\s]{7,15}$/.test(guardianMobile)) { toast('Sahi Mobile No. daalein'); return; }
+      const declAccepted = document.getElementById('a-decl').checked;
+      if (!declAccepted) {
+        toast('Aage badhne ke liye Terms & Conditions declaration accept karein');
+        document.getElementById('a-decl-wrap').classList.add('warn');
+        document.getElementById('a-decl-wrap').scrollIntoView({behavior:'smooth', block:'center'});
+        return;
+      }
       const rec = {
         id: a.id, admissionNo: a.admissionNo,
         classAppliedFor: document.getElementById('a-cls').value,
@@ -2105,6 +2173,7 @@
         previousSchool: document.getElementById('a-prevschool').value.trim(),
         photo: pendingPhoto || '',
         status: a.status || 'Registered',
+        declarationAccepted: declAccepted,
         linkedStudentId: a.linkedStudentId || null,
         createdBy: editing ? (a.createdBy || currentUserRole) : currentUserRole,
       };
@@ -2114,10 +2183,139 @@
         admissions.push(rec);
       }
       saveAdmissions();
-      toast(editing?'Registration updated':'Student registered successfully');
       close();
-      renderAdmission();
+      if (editing) {
+        toast('Registration updated');
+        renderAdmission();
+      } else {
+        toast('Student registered successfully');
+        renderAdmission();
+        admissionPrintPromptModal(rec.id);
+      }
     });
+  }
+
+  function admissionPrintPromptModal(admissionId){
+    const a = admissions.find(x=>x.id===admissionId);
+    if (!a) return;
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="ekps-admprint-bg">
+        <div class="modal" style="width:420px;">
+          <div class="modal-head"><h3>Registration Successful ✅</h3><div class="icon-btn" id="ekps-admprint-close">✕</div></div>
+          <div class="modal-body">
+            <p style="font-size:13px; color:var(--ink-2); line-height:1.6; margin:0 0 4px 0;">
+              <b>${esc(a.name)}</b> (Adm. No. ${esc(a.admissionNo)}) safaltapoorvak register ho gaya/gayi hai.
+            </p>
+            <p style="font-size:12.5px; color:var(--slate); line-height:1.6;">
+              Aap ab admission form print karke, parent/guardian ke hastaakshar (signature) le sakte hain aur record ke liye file me rakh sakte hain.
+            </p>
+          </div>
+          <div class="modal-foot">
+            <span class="btn btn-ghost" id="ekps-admprint-later">Later</span>
+            <span class="btn btn-accent" id="ekps-admprint-now">${ICONS.print.replace('navicon','')} Print Form</span>
+          </div>
+        </div>
+      </div>`;
+    const close = ()=>{ modalRoot.innerHTML=''; };
+    document.getElementById('ekps-admprint-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-admprint-bg') close(); });
+    document.getElementById('ekps-admprint-close').addEventListener('click', close);
+    document.getElementById('ekps-admprint-later').addEventListener('click', close);
+    document.getElementById('ekps-admprint-now').addEventListener('click', ()=>{ printAdmissionForm(admissionId); close(); });
+  }
+
+  function printAdmissionForm(admissionId){
+    const a = admissions.find(x=>x.id===admissionId);
+    if (!a) { toast('Registration nahi mila'); return; }
+    const win = window.open('', '_blank');
+    if (!win) { toast('Popup block ho gaya — popup allow karein'); return; }
+    const row = (label, val) => `<div class="pf-row"><span class="pf-lbl">${esc(label)}</span><span class="pf-val">${val!==undefined && val!==null && val!=='' ? esc(String(val)) : '&mdash;'}</span></div>`;
+    win.document.write(`<!DOCTYPE html><html><head><title>Admission Form — ${esc(a.name)}</title><style>
+      @page { size: A4; margin: 12mm; }
+      * { box-sizing:border-box; }
+      body { margin:0; font-family: Arial, Helvetica, sans-serif; color:#1B2A4A; font-size:12px; }
+      .head { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #1B2A4A; padding-bottom:10px; margin-bottom:12px; }
+      .head-left { display:flex; gap:12px; align-items:center; }
+      .photo-box { width:70px; height:86px; border:1px solid #999; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:9px; color:#888; overflow:hidden; }
+      .photo-box img { width:100%; height:100%; object-fit:cover; }
+      h1 { font-size:18px; margin:0 0 3px 0; }
+      .sub { font-size:11px; color:#555; }
+      .frm-title { text-align:right; }
+      .frm-title .t { font-size:15px; font-weight:800; color:#C1502E; }
+      .sec-title { font-family:Arial; font-weight:800; font-size:12.5px; background:#EFEBDD; padding:5px 9px; border-radius:5px; margin:14px 0 8px 0; display:flex; align-items:center; gap:6px; }
+      .sec-title .n { display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:50%; background:#1B2A4A; color:#fff; font-size:10px; }
+      .pf-grid { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:4px 16px; }
+      .pf-grid.c2 { grid-template-columns: 1fr 1fr; }
+      .pf-row { display:flex; border-bottom:1px dotted #ccc; padding:4px 0; }
+      .pf-lbl { width:42%; color:#555; font-size:10.5px; flex-shrink:0; }
+      .pf-val { font-weight:700; font-size:11.5px; }
+      .decl { margin-top:14px; border:1px solid #ccc; border-radius:6px; padding:10px 12px; font-size:9.8px; line-height:1.55; background:#FBFAF6; }
+      .decl h4 { font-size:10.5px; margin:8px 0 2px 0; }
+      .decl h4:first-child { margin-top:0; }
+      .decl p { margin:0 0 3px 0; }
+      .agree { margin-top:10px; display:flex; align-items:flex-start; gap:7px; font-size:10.5px; }
+      .agree .box { width:12px; height:12px; border:1.4px solid #1B2A4A; flex-shrink:0; margin-top:1px; ${a.declarationAccepted? 'position:relative;' : ''} }
+      .agree .box::after { ${a.declarationAccepted? `content:"✓"; position:absolute; left:1px; top:-3px; font-size:11px; font-weight:900;` : ''} }
+      .sign-row { display:flex; justify-content:space-between; margin-top:34px; gap:20px; }
+      .sign-col { flex:1; text-align:center; }
+      .sign-line { border-top:1px solid #333; padding-top:5px; font-size:10.5px; color:#333; }
+      .sign-space { height:34px; }
+      .footnote { margin-top:16px; font-size:9px; color:#888; text-align:center; }
+    </style></head><body>
+      <div class="head">
+        <div class="head-left">
+          <div class="photo-box">${a.photo ? `<img src="${a.photo}"/>` : 'Photo'}</div>
+          <div>
+            <h1>${esc(schoolSettings.name)}</h1>
+            ${schoolSettings.address?`<div class="sub">${esc(schoolSettings.address)}</div>`:''}
+            ${schoolSettings.phone?`<div class="sub">Ph: ${esc(schoolSettings.phone)}</div>`:''}
+          </div>
+        </div>
+        <div class="frm-title"><div class="t">STUDENT REGISTRATION &amp; ADMISSION FORM</div><div class="sub">Adm./Reg. No.: ${esc(a.admissionNo)}</div><div class="sub">Date: ${fmtDate(a.admissionDate)}</div></div>
+      </div>
+
+      <div class="sec-title"><span class="n">1</span> Student Personal Information</div>
+      <div class="pf-grid">
+        ${row('Student Name', a.name)}
+        ${row('Date of Birth', a.dob ? fmtDate(a.dob) : '')}
+        ${row('Gender', a.gender)}
+        ${row('Category', a.category)}
+        ${row('Blood Group', a.bloodGroup)}
+        ${row('Aadhaar No.', a.aadhaar)}
+      </div>
+
+      <div class="sec-title"><span class="n">2</span> Admission &amp; Previous Academic Details</div>
+      <div class="pf-grid c2">
+        ${row('Class Applied For', a.classAppliedFor)}
+        ${row('Admission Date', fmtDate(a.admissionDate))}
+        ${row('Previous School', a.previousSchool)}
+        ${row('Status', a.status)}
+      </div>
+
+      <div class="sec-title"><span class="n">3</span> Parent / Guardian Details <span style="font-weight:400; font-size:9.5px;">(पिता एवं माता का विवरण)</span></div>
+      <div class="pf-grid c2">
+        ${row("Father's Name", a.fatherName)}
+        ${row("Mother's Name", a.motherName)}
+        ${row('Guardian Mobile No.', a.guardianMobile)}
+        ${row('Alternate Mobile No.', a.altMobile)}
+      </div>
+      <div class="pf-grid c2" style="margin-top:2px;">
+        ${row('Address', a.address)}
+      </div>
+
+      <div class="sec-title"><span class="n">4</span> Terms &amp; Conditions <span style="font-weight:400; font-size:9.5px;">(नियम एवं शर्तें)</span></div>
+      <div class="decl">${DECLARATION_HTML}</div>
+      <div class="agree"><div class="box"></div><div>मैंने उपरोक्त अभिभावक घोषणा पत्र, जिम्मेदारी पत्र (Indemnity Bond) एवं नाम वापसी नियम पढ़ और समझ लिया है, तथा इसे स्वीकार करता/करती हूँ।</div></div>
+
+      <div class="sign-row">
+        <div class="sign-col"><div class="sign-space"></div><div class="sign-line">Parent / Guardian Signature<br/>(अभिभावक के हस्ताक्षर)</div></div>
+        <div class="sign-col"><div class="sign-space"></div><div class="sign-line">Date</div></div>
+        <div class="sign-col">${schoolSettings.principalSign ? `<img src="${schoolSettings.principalSign}" style="height:30px;"/>` : `<div class="sign-space"></div>`}<div class="sign-line">Principal / Authorised Signatory</div></div>
+      </div>
+      <div class="footnote">This is a computer-generated registration form. Admission is subject to Principal's final approval.</div>
+    </body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(()=> win.print(), 300);
   }
 
   function confirmAdmissionModal(admissionId){
@@ -2219,6 +2417,7 @@
                   <td><span class="status-badge status-${a.status}">${a.status}</span></td>
                   <td><div class="row-actions">
                     ${a.status!=='Admitted' ? `<div class="icon-btn" data-confirm-adm="${a.id}" title="Confirm Admission">${ICONS.stamp}</div>` : ''}
+                    <div class="icon-btn" data-print-adm="${a.id}" title="Print Admission Form">${ICONS.print}</div>
                     <div class="icon-btn" data-edit-adm="${a.id}" title="Edit">${ICONS.edit}</div>
                     ${isAdmin() ? `<div class="icon-btn js-del-btn" data-del-adm="${a.id}" title="Delete">${ICONS.trash}</div>` : ''}
                   </div></td>
@@ -2233,6 +2432,7 @@
     document.getElementById('ekps-adm-new').addEventListener('click', ()=>{ editingAdmissionId=null; admissionModal(); });
     contentEl.querySelectorAll('[data-edit-adm]').forEach(el=> el.addEventListener('click', ()=>{ editingAdmissionId = parseInt(el.dataset.editAdm); admissionModal(); }));
     contentEl.querySelectorAll('[data-confirm-adm]').forEach(el=> el.addEventListener('click', ()=>{ confirmAdmissionModal(parseInt(el.dataset.confirmAdm)); }));
+    contentEl.querySelectorAll('[data-print-adm]').forEach(el=> el.addEventListener('click', ()=>{ printAdmissionForm(parseInt(el.dataset.printAdm)); }));
     contentEl.querySelectorAll('[data-del-adm]').forEach(el=> el.addEventListener('click', ()=>{
       if(!isAdmin()){ toast('Access Denied: Registration delete karne ki permission sirf Admin ko hai'); return; }
       if(!confirm('Ye registration delete karein?')) return;
@@ -4292,6 +4492,8 @@
         <div class="panel-head"><h3>Google Sheet Connection (Is School Ka Database)</h3>${syncIndicatorHtml()}</div>
         <div class="panel-body">
           <p style="font-size:13px; color:var(--slate); margin:0 0 14px 0; line-height:1.6;">
+            Naye school ke liye: apni khud ki Google Sheet banayein, uspe Apps Script code paste karke Web App deploy karein,
+            phir neeche wo URL paste karke <b>Connect</b> dabayein. Tabs/headers apne aap ban jayenge — koi code change nahi chahiye.
           </p>
           ${(syncStatus==='error' || syncStatus==='offline') && syncStatusMsg ? `
           <div style="font-size:12.5px; background:var(--rust-bg); color:var(--rust); border:1px solid #EAD0C6; border-radius:8px; padding:9px 12px; margin:0 0 14px 0;">
