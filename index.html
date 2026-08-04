@@ -1,3 +1,9 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Fee Manager</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
@@ -81,6 +87,20 @@
     font-size: 10.5px; color: #8D98B3; line-height: 1.5;
   }
 
+  /* ---------- Mobile drawer nav (hidden on desktop) ---------- */
+  #ekps-root .ekps-hamburger {
+    display: none; flex-direction: column; justify-content: center; align-items: center; gap: 4px;
+    width: 38px; height: 38px; border-radius: 10px; cursor: pointer; flex-shrink: 0;
+    background: var(--card); border: 1px solid var(--border);
+  }
+  #ekps-root .ekps-hamburger span { width: 16px; height: 2px; border-radius: 2px; background: var(--ink); display:block; }
+  #ekps-root .ekps-drawer-close { display:none; color:#C7CFE0; font-size:16px; cursor:pointer; padding:4px 6px; flex-shrink:0; }
+  #ekps-root .ekps-drawer-overlay {
+    display:none; position: fixed; inset:0; background: rgba(10,14,26,0.5); z-index: 90;
+    opacity: 0; transition: opacity .2s ease;
+  }
+  #ekps-root .ekps-drawer-overlay.open { display:block; opacity: 1; }
+
   /* ---------- Main ---------- */
   #ekps-root .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   #ekps-root .topbar {
@@ -89,8 +109,8 @@
     background: rgba(244,241,233,0.85); backdrop-filter: blur(6px);
     position: sticky; top: 0; z-index: 5;
   }
-  #ekps-root .topbar h1 { font-family:'Sora'; font-size: 19px; font-weight: 700; margin: 0; }
-  #ekps-root .topbar .sub { font-size: 12px; color: var(--slate); margin-top: 2px; }
+  #ekps-root .topbar h1 { font-family:'Sora'; font-size: 19px; font-weight: 700; margin: 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #ekps-root .topbar .sub { font-size: 12px; color: var(--slate); margin-top: 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #ekps-root .topbar-right { display:flex; align-items:center; gap: 14px; font-size: 12px; color: var(--slate); }
   #ekps-root .content { padding: 24px 28px 60px 28px; }
 
@@ -384,13 +404,64 @@
 
   @media (max-width: 980px) {
     #ekps-root { flex-direction: column; }
-    #ekps-root .sidebar { width:100%; min-height:auto; position:relative; flex-direction:row; align-items:center; overflow-x:auto; }
-    #ekps-root .brand { border-bottom:none; margin-bottom:0; padding: 4px 10px; }
-    #ekps-root nav.navlist { flex-direction:row; margin-top:0; }
-    #ekps-root .sidebar-foot { display:none; }
+    #ekps-root .ekps-hamburger { display: flex; }
+    #ekps-root .ekps-drawer-close { display: block; }
+    #ekps-root .sidebar {
+      position: fixed; top: 0; left: 0; height: 100dvh; width: 272px; max-width: 84vw;
+      min-height: 0; flex-direction: column; overflow-x: visible; overflow-y: auto;
+      transform: translateX(-104%); transition: transform .28s cubic-bezier(.2,.8,.2,1);
+      z-index: 100; box-shadow: 12px 0 34px rgba(10,14,26,0.35);
+    }
+    #ekps-root .sidebar.open { transform: translateX(0); }
+    #ekps-root .brand { border-bottom: 1px solid rgba(255,255,255,0.12); margin-bottom: 18px; padding: 4px 8px 20px 8px; }
+    #ekps-root nav.navlist { flex-direction: column; margin-top: 4px; }
+    #ekps-root .navitem { padding: 12px 13px; font-size: 14px; min-height: 46px; }
+    #ekps-root .sidebar-foot { display: block; }
     #ekps-root .kpi-grid { grid-template-columns: repeat(2,1fr); }
     #ekps-root .two-col { grid-template-columns: 1fr; }
     #ekps-root .form-grid, #ekps-root .form-grid.cols-4 { grid-template-columns: repeat(2,1fr); }
+    #ekps-root .btn { min-height: 40px; }
+  }
+
+  @media (max-width: 640px) {
+    #ekps-root { min-height: 100dvh; }
+    #ekps-root .sidebar { width: 82vw; }
+    #ekps-root .brand { padding: 4px 6px 18px 6px; gap:8px; }
+    #ekps-root .brand-name { font-size: 12.5px; }
+    #ekps-root .brand-sub { font-size: 9.5px; }
+    #ekps-root .navitem { padding: 12px 12px; font-size: 13.5px; }
+    #ekps-root .navitem span:not(.navicon) { white-space: nowrap; }
+    #ekps-root .topbar { padding: 10px 14px; gap:8px; }
+    #ekps-root .topbar h1 { font-size: 15.5px; }
+    #ekps-root .topbar .sub { font-size: 10.5px; }
+    #ekps-root .topbar-right { gap: 7px; }
+    #ekps-root #ekps-clock { display:none; }
+    #ekps-root #ekps-sync-badge { display:none; }
+    #ekps-root .content { padding: 12px 10px calc(24px + env(safe-area-inset-bottom)) 10px; }
+    #ekps-root .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    #ekps-root .kpi-card { padding: 12px 14px; }
+    #ekps-root .kpi-value { font-size: 20px; }
+    #ekps-root .form-grid, #ekps-root .form-grid.cols-4 { grid-template-columns: 1fr; }
+    #ekps-root .panel { border-radius: 14px; }
+    #ekps-root .panel-head { padding: 13px 14px; }
+    #ekps-root .panel-body { padding: 13px 14px; }
+    #ekps-root .field input, #ekps-root .field select, #ekps-root .field textarea { min-height: 42px; font-size: 15px; }
+    #ekps-root .btn { min-height: 42px; font-size: 13.5px; }
+    #ekps-root .toolbar { gap: 8px; }
+    #ekps-root .toolbar .search-wrap { width: 100%; }
+    #ekps-root .toolbar select { flex: 1; min-width: 0; min-height: 40px; }
+    #ekps-root .modal-lg, #ekps-root .modal-xl { width: 100%; }
+    #ekps-root .modal-backdrop { padding: 0; align-items: flex-end; }
+    #ekps-root .modal { border-radius: 16px 16px 0 0; max-height: 92vh; width: 100%; }
+    #ekps-root .modal-foot { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+    #ekps-root .receipt { width: 100%; max-width: 340px; padding: 20px 16px 16px 16px; }
+    #ekps-root table.data { font-size: 12px; }
+    #ekps-root table.data thead th, #ekps-root table.data tbody td { padding: 10px 8px; }
+    #ekps-root .icon-btn { width: 30px; height: 30px; }
+    #ekps-root .export-grid, #ekps-root .stat-strip { grid-template-columns: 1fr; }
+    #ekps-root .pos-item-grid { grid-template-columns: 1fr 1fr; }
+    #ekps-root .recent-row { flex-wrap: wrap; gap: 6px; padding: 11px 0; }
+    #ekps-install-btn { font-size: 10.5px; padding: 5px 8px; }
   }
 
   /* ---------- Session Promotion ---------- */
@@ -453,9 +524,12 @@
   #ekps-root .sign-preview { width:120px; height:56px; border-radius:6px; background:#fff; border:1px dashed var(--border-strong); overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--slate); flex-shrink:0; }
   #ekps-root .sign-preview img { width:100%; height:100%; object-fit:contain; }
 </style>
+</head>
+<body>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <div id="ekps-root">
+  <div class="ekps-drawer-overlay" id="ekps-drawer-overlay"></div>
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-badge">EK</div>
@@ -464,6 +538,7 @@
         <div class="brand-sub">Fee Manager</div>
       </div>
       <div id="ekps-logout-btn" style="cursor: pointer; font-size: 11px; padding: 4px 8px; background: rgba(255,255,255,0.1); border-radius: 5px; display: none;" title="Logout">Logout</div>
+      <div class="ekps-drawer-close" id="ekps-drawer-close">✕</div>
     </div>
     <nav class="navlist" id="ekps-nav"></nav>
     <div class="sidebar-foot"><span id="ekps-sync-indicator">Local storage only</span><br/>Academic Year 2026&ndash;27</div>
@@ -471,11 +546,17 @@
 
   <div class="main">
     <div class="topbar">
-      <div>
-        <h1 id="ekps-title">Dashboard</h1>
-        <div class="sub" id="ekps-subtitle">Realtime fee collection overview</div>
+      <div style="display:flex; align-items:center; gap:12px; min-width:0;">
+        <div class="ekps-hamburger" id="ekps-hamburger" title="Menu">
+          <span></span><span></span><span></span>
+        </div>
+        <div style="min-width:0;">
+          <h1 id="ekps-title">Dashboard</h1>
+          <div class="sub" id="ekps-subtitle">Realtime fee collection overview</div>
+        </div>
       </div>
       <div class="topbar-right">
+        <span id="ekps-install-btn" title="App ko mobile/desktop par install karein" style="display:none; align-items:center; gap:5px; cursor:pointer; background: var(--saffron); color: var(--ink); padding: 5px 10px; border-radius: 20px; font-size: 11.5px; font-weight:700;">📲 Install App</span>
         <span id="ekps-sync-badge" style="background: var(--card); border:1px solid var(--border); padding: 4px 10px; border-radius: 20px; font-size: 11.5px; font-weight:600;"></span>
         <span id="ekps-role-badge" style="background: var(--border-strong); padding: 3px 8px; border-radius: 5px; font-weight: 600; text-transform: uppercase; font-size: 11px; color: var(--ink);"></span>
         <span id="ekps-clock" class="mono"></span>
@@ -528,6 +609,7 @@
   let editingStudentId = null;
   let showStudentModal = false;
   let receiptSelectedId = null;
+  let collectPrefillId = null;
   let ready = false;
   let autoBackups = [];
 
@@ -636,6 +718,35 @@
   const subEl = document.getElementById('ekps-subtitle');
   const modalRoot = document.getElementById('ekps-modal-root');
 
+  const hamburgerBtn = document.getElementById('ekps-hamburger');
+  const drawerCloseBtn = document.getElementById('ekps-drawer-close');
+  const drawerOverlay = document.getElementById('ekps-drawer-overlay');
+  function openDrawer(){
+    const sb = document.querySelector('#ekps-root .sidebar');
+    if (sb) sb.classList.add('open');
+    if (drawerOverlay) drawerOverlay.classList.add('open');
+  }
+  if (hamburgerBtn) hamburgerBtn.addEventListener('click', openDrawer);
+  if (drawerCloseBtn) drawerCloseBtn.addEventListener('click', closeDrawer);
+  if (drawerOverlay) drawerOverlay.addEventListener('click', closeDrawer);
+
+  // Ensure the Sora/Inter/IBM Plex Mono webfonts actually load on mobile browsers/webviews
+  // where a CSS @import inside an injected <style> tag can sometimes be skipped.
+  (function ensureFontsLoaded(){
+    try {
+      if (!document.querySelector('link[data-ekps-fonts]')) {
+        const pre1 = document.createElement('link'); pre1.rel = 'preconnect'; pre1.href = 'https://fonts.googleapis.com';
+        const pre2 = document.createElement('link'); pre2.rel = 'preconnect'; pre2.href = 'https://fonts.gstatic.com'; pre2.crossOrigin = 'anonymous';
+        const fontLink = document.createElement('link');
+        fontLink.rel = 'stylesheet'; fontLink.setAttribute('data-ekps-fonts', '1');
+        fontLink.href = 'https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap';
+        document.head.appendChild(pre1);
+        document.head.appendChild(pre2);
+        document.head.appendChild(fontLink);
+      }
+    } catch(fontErr) { /* fonts are progressive enhancement — system font fallback still applies */ }
+  })();
+
   function fmt(n){ n = Math.round(n||0); return '₹' + n.toLocaleString('en-IN'); }
   function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function todayISO(){ const d = new Date(); return d.toISOString().slice(0,10); }
@@ -644,7 +755,21 @@
 
   const BILL_TYPES = ['Uniform','Books / Copy','Van / Transport','Annual Charge','Exam Fee','Late Fee','Activity / Picnic','Stationery / Inventory','Other'];
   function billsTotal(s){ return Array.isArray(s.bills) ? s.bills.reduce((a,b)=>a+(parseFloat(b.amount)||0),0) : 0; }
-  function totalDue(s){ return (s.monthlyFee*12) + s.examFee + s.oldDue + s.uniformBill + s.bookBill + s.otherBill + billsTotal(s); }
+  // Months for which tuition fee actually applies for this student — from their chosen
+  // "Fee Start Month" (e.g. student admitted in September only owes Sept–March) through March.
+  // Students with no feeStartMonth set (older records) keep the full April–March year, unchanged.
+  function applicableMonths(s){
+    const idx = MONTHS.indexOf(s.feeStartMonth);
+    return idx === -1 ? MONTHS : MONTHS.slice(idx);
+  }
+  // Converts a YYYY-MM-DD date into its academic-year month name (April–March ordering)
+  function monthNameFromDate(dateStr){
+    if (!dateStr) return 'April';
+    const d = new Date(dateStr+'T00:00:00');
+    if (isNaN(d)) return 'April';
+    return MONTHS[(d.getMonth()+9)%12];
+  }
+  function totalDue(s){ return (s.monthlyFee*applicableMonths(s).length) + s.examFee + s.oldDue + s.uniformBill + s.bookBill + s.otherBill + billsTotal(s); }
   function studentEntries(id){ return entries.filter(e => e.studentId === id); }
   function totalPaid(id){ return studentEntries(id).reduce((a,e)=>a+e.amount,0); }
   function monthPaid(id, month){ return studentEntries(id).filter(e=>e.month===month).reduce((a,e)=>a+e.amount,0); }
@@ -707,8 +832,9 @@
     });
     const otherChargesPaid = Object.values(otherChargesPaidByItem).reduce((a,v)=>a+v, 0);
     const byMonth = {};
+    const applicable = applicableMonths(s);
     MONTHS.forEach(m=>{
-      const fee = s.monthlyFee || 0;
+      const fee = applicable.includes(m) ? (s.monthlyFee || 0) : 0;
       const pay = fee > 0 ? Math.min(fee, remaining) : 0;
       byMonth[m] = pay;
       remaining = Math.max(0, remaining - pay);
@@ -720,6 +846,7 @@
     return alloc.byMonth[month] || 0;
   }
   function monthDueCascade(s, month){
+    if (!applicableMonths(s).includes(month)) return 0;
     return Math.max(0, (s.monthlyFee||0) - monthPaidCascade(s, month));
   }
   function currentMonthDueOf(s){
@@ -730,8 +857,10 @@
     const curIdx = currentMonthIndex();
     const elapsed = MONTHS.slice(0, curIdx+1);
     const alloc = monthlyAllocation(s);
+    const applicable = applicableMonths(s);
     const buckets = { current:0, b1_2:0, b3_5:0, b6plus:0 };
     elapsed.forEach((m, i)=>{
+      if (!applicable.includes(m)) return;
       const age = curIdx - i;
       const due = Math.max(0, (s.monthlyFee||0) - alloc.byMonth[m]);
       if (due <= 0) return;
@@ -1471,11 +1600,18 @@
     navEl.innerHTML = navHtml;
     navEl.querySelectorAll('.navitem').forEach(el => {
       if(el.id === 'nav-pass-manage'){
-        el.addEventListener('click', () => passwordManagementModal());
+        el.addEventListener('click', () => { closeDrawer(); passwordManagementModal(); });
       } else {
-        el.addEventListener('click', () => { route = el.dataset.route; render(); });
+        el.addEventListener('click', () => { route = el.dataset.route; closeDrawer(); render(); });
       }
     });
+  }
+
+  function closeDrawer(){
+    const sb = document.querySelector('#ekps-root .sidebar');
+    const ov = document.getElementById('ekps-drawer-overlay');
+    if (sb) sb.classList.remove('open');
+    if (ov) ov.classList.remove('open');
   }
 
   function go(r){ 
@@ -1606,6 +1742,8 @@
                 <div style="display:flex;align-items:center;gap:10px;">
                   <div class="recent-amt">${fmt(e.amount)}</div>
                   <div class="icon-btn" data-wa-payment="${e.id}" title="Payment confirmation WhatsApp par bhejein">📲</div>
+                  <div class="icon-btn" data-print-receipt="${e.id}" title="Payment Receipt print karein">${ICONS.print}</div>
+                  <div class="icon-btn" data-print-statement="${e.studentId}" title="Fee Statement print karein">🧾</div>
                   ${isAdmin() ? `<div class="icon-btn js-del-btn" data-del-entry="${e.id}" title="Delete">${ICONS.trash}</div>` : ''}
                 </div>
               </div>`;
@@ -1617,6 +1755,19 @@
     let pickedId = null;
     const input = document.getElementById('ekps-student-input');
     const preview = document.getElementById('ekps-pick-preview');
+
+    if (collectPrefillId != null) {
+      const ps = students.find(x=>x.id===collectPrefillId);
+      if (ps) {
+        pickedId = ps.id;
+        input.value = `${ps.id} — ${ps.name} (${ps.cls})`;
+        const due = totalDue(ps), paid = totalPaid(ps.id), rest = due-paid;
+        preview.className = 'pick-preview show';
+        preview.innerHTML = `<b>${esc(ps.name)}</b> &middot; Class ${esc(ps.cls)} &middot; Rest Due: <b>${fmt(rest)}</b>`;
+      }
+      collectPrefillId = null;
+    }
+
     input.addEventListener('input', ()=>{
       const m = input.value.match(/^(\d+)\s*—/);
       if (m) {
@@ -1658,6 +1809,14 @@
       el.addEventListener('click', ()=> sendPaymentReceiptWhatsApp(parseInt(el.dataset.waPayment), 'fee'));
     });
 
+    contentEl.querySelectorAll('[data-print-receipt]').forEach(el=>{
+      el.addEventListener('click', ()=> printSingleReceipt(parseInt(el.dataset.printReceipt)));
+    });
+
+    contentEl.querySelectorAll('[data-print-statement]').forEach(el=>{
+      el.addEventListener('click', ()=> printStudentStatement(parseInt(el.dataset.printStatement)));
+    });
+
     contentEl.querySelectorAll('[data-del-entry]').forEach(el=>{
       el.addEventListener('click', ()=>{
         if(!isAdmin()){ toast('Access Denied: Entry delete karne ki permission sirf Admin ko hai'); return; }
@@ -1674,7 +1833,7 @@
 // ---------- STUDENTS ----------
   function studentModal(){
     const editing = editingStudentId != null;
-    const s = editing ? students.find(x=>x.id===editingStudentId) : {id:nextStudentId(), cls:CLASS_ORDER[0], name:'', fatherName:'', address:'', mobNo:'', photo:'', monthlyFee:0, examFee:0, oldDue:0, uniformBill:0, bookBill:0, otherBill:0, bills:[]};
+    const s = editing ? students.find(x=>x.id===editingStudentId) : {id:nextStudentId(), cls:CLASS_ORDER[0], name:'', fatherName:'', address:'', mobNo:'', photo:'', monthlyFee:0, examFee:0, oldDue:0, uniformBill:0, bookBill:0, otherBill:0, bills:[], feeStartMonth:'April'};
     let pendingPhoto = s.photo || '';
     modalRoot.innerHTML = `
       <div class="modal-backdrop" id="ekps-modal-bg">
@@ -1709,12 +1868,17 @@
             </div>
             <div class="form-grid cols-4">
               <div class="field"><label>Monthly Fee</label><input type="number" id="f-mf" value="${s.monthlyFee}"/></div>
+              <div class="field">
+                <label>Fee Start Month</label>
+                <select id="f-fsm">${MONTHS.map(m=>`<option value="${m}" ${m===(s.feeStartMonth||'April')?'selected':''}>${m}</option>`).join('')}</select>
+              </div>
               <div class="field"><label>Exam Fee</label><input type="number" id="f-ef" value="${s.examFee}"/></div>
               <div class="field"><label>Old Due</label><input type="number" id="f-od" value="${s.oldDue}"/></div>
               <div class="field"><label>Uniform Bill</label><input type="number" id="f-ub" value="${s.uniformBill}"/></div>
               <div class="field"><label>Book Bill</label><input type="number" id="f-bb" value="${s.bookBill}"/></div>
               <div class="field"><label>Other Bill</label><input type="number" id="f-ob" value="${s.otherBill}"/></div>
             </div>
+            <div class="hint" style="font-size:11.5px; color:var(--slate); margin-top:-6px;">Jis mahine se bill/due generate hona shuru ho (uss mahine se March tak). Baaki purane mahino ka koi due nahi banega.</div>
           </div>
           <div class="modal-foot">
             <span class="btn btn-ghost" id="ekps-modal-cancel">Cancel</span>
@@ -1752,6 +1916,7 @@
         mobNo,
         photo: pendingPhoto || '',
         monthlyFee: parseFloat(document.getElementById('f-mf').value)||0,
+        feeStartMonth: document.getElementById('f-fsm').value || 'April',
         examFee: parseFloat(document.getElementById('f-ef').value)||0,
         oldDue: parseFloat(document.getElementById('f-od').value)||0,
         uniformBill: parseFloat(document.getElementById('f-ub').value)||0,
@@ -2040,7 +2205,7 @@
     <h4>1. अभिभावक का घोषणा पत्र (Parent's Declaration)</h4>
     <p>मैं यह प्रमाणित करता/करती हूँ कि ऊपर दी गई सभी जानकारी मेरी जानकारी में पूरी तरह सही है। मैं जानता/जानती हूँ कि केवल रजिस्ट्रेशन फॉर्म जमा करने से स्कूल मेरे बच्चे को एडमिशन देने के लिए बाध्य नहीं है। मुझे यह भी स्वीकार है कि एडमिशन के विषय में स्कूल के प्रिंसिपल का फैसला ही आखिरी होगा और मुझे मान्य होगा।</p>
     <h4>2. जिम्मेदारी का पत्र (Indemnity Bond)</h4>
-    <p>विद्यालय द्वारा सुरक्षा और देख-रेख के लिए उठाए गए सभी आवश्यक कदमों एवं नियमों का पालन करने के लिए मेरा बच्चा और मैं पूर्णतः सहमत हैं। अथवा विद्यालय द्वारा आयोजित किसी भी शैक्षणिक, खेलकूद या अन्य गतिविधियों के दौरान यदि मेरे बच्चे को कोई अकस्मात चोट लगती है, स्वास्थ्य संबंधी समस्या होती है अथवा कोई अप्रत्याशित घटना घटित होती है, तो इसके लिए मैं विद्यालय प्रशासन, शिक्षकों या कर्मचारियों को व्यक्तिगत अथवा कानूनी रूप से उत्तरदायी (जिम्मेदार) नहीं ठहराऊँगा/ठहराऊँगी।</p>
+    <p>स्मुझे विद्यालय प्रशासन की व्यवस्था, सुरक्षा मानकों और शिक्षकों की देख-रेख पर पूर्ण विश्वास है। मैं अपने बच्चे को स्कूल परिसर में शैक्षणिक, खेलकूद तथा अन्य सभी रचनात्मक गतिविधियों में भाग लेने की स्वेच्छा से अनुमति देता/देती हूँ। मैं समझता/समझती हूँ कि खेलकूद एवं दैनिक गतिविधियों के दौरान पूरी सतर्कता के बावजूद कभी-कभी अप्रत्याशित चोट या दुर्घटना की संभावना बनी रहती है। ऐसी किसी भी आकस्मिक परिस्थिति या अनहोनी के लिए मैं विद्यालय प्रबंधन या स्टाफ को व्यक्तिगत अथवा कानूनी रूप से उत्तरदायी नहीं मानूँगा/मानूँगी।</p>
     <h4>3. नाम वापस लेने की प्रक्रिया (Withdrawal Policy)</h4>
     <p>मैं समझता/समझती हूँ कि यदि मैं अपने बच्चे का नाम स्कूल से वापस लेना चाहता/चाहती हूँ, तो स्कूल को 3 महीने पहले सूचना देनी होगी। मैं यह भी जानता/जानती हूँ कि ऐसी स्थिति में जमा की गई कोई भी फीस वापस (Refund) नहीं मिलेगी।</p>`;
 
@@ -2338,10 +2503,15 @@
             </div>
             <div class="form-grid cols-4">
               <div class="field"><label>Monthly Fee</label><input type="number" id="c-mf" value="0"/></div>
+              <div class="field">
+                <label>Fee Start Month</label>
+                <select id="c-fsm">${MONTHS.map(m=>`<option value="${m}" ${m===monthNameFromDate(a.admissionDate)?'selected':''}>${m}</option>`).join('')}</select>
+              </div>
               <div class="field"><label>Exam Fee</label><input type="number" id="c-ef" value="0"/></div>
               <div class="field"><label>Old Due</label><input type="number" id="c-od" value="0"/></div>
               <div class="field"><label>Uniform Bill</label><input type="number" id="c-ub" value="0"/></div>
             </div>
+            <div class="hint" style="font-size:11.5px; color:var(--slate); margin-top:-6px;">Admission Date (${fmtDate(a.admissionDate)}) ke hisaab se auto-select hua hai — chahein to badal sakte hain. Jis mahine se bill/due generate hona shuru ho (uss mahine se March tak).</div>
           </div>
           <div class="modal-foot">
             <span class="btn btn-ghost" id="ekps-cfm-cancel">Cancel</span>
@@ -2361,6 +2531,7 @@
         fatherName: a.fatherName||'', address: a.address||'', mobNo: a.guardianMobile||'',
         photo: a.photo||'',
         monthlyFee: parseFloat(document.getElementById('c-mf').value)||0,
+        feeStartMonth: document.getElementById('c-fsm').value || 'April',
         examFee: parseFloat(document.getElementById('c-ef').value)||0,
         oldDue: parseFloat(document.getElementById('c-od').value)||0,
         uniformBill: parseFloat(document.getElementById('c-ub').value)||0,
@@ -4099,7 +4270,7 @@
 
     // Payment priority: sabse pehle Old Due / Other Charges clear hote hain, uske baad tuition months.
     const alloc = monthlyAllocation(s);
-    const monthRows = MONTHS.map(m=>{
+    const monthRows = applicableMonths(s).map(m=>{
       const p = alloc.byMonth[m] || 0;
       const d = Math.max(0, (s.monthlyFee||0) - p);
       return `<tr><td>${esc(m)}</td><td class="r">${fmt(s.monthlyFee)}</td><td class="r">${p?fmt(p):'—'}</td><td class="r">${d?fmt(d):'—'}</td></tr>`;
@@ -4332,6 +4503,7 @@
                   <td class="mono">${fmt(rest)}</td>
                   <td><span class="status-badge status-${st}">${st}</span></td>
                   <td style="white-space:nowrap;">
+                    <span class="icon-btn" data-collect-fee="${s.id}" title="Fee Collection karein">${ICONS.collect}</span>
                     <span class="icon-btn" data-wa-send="${s.id}" title="Bill WhatsApp par bhejein">📲</span>
                     <span class="icon-btn" data-statement="${s.id}" title="Statement nikalein">🧾</span>
                   </td>
@@ -4355,6 +4527,12 @@
       const id = parseInt(el.dataset.toggle);
       ledgerExpanded[id] = !ledgerExpanded[id];
       renderLedger();
+    }));
+    contentEl.querySelectorAll('[data-collect-fee]').forEach(el=> el.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      collectPrefillId = parseInt(el.dataset.collectFee);
+      route = 'collect';
+      render();
     }));
     contentEl.querySelectorAll('[data-wa-send]').forEach(el=> el.addEventListener('click', (e)=>{
       e.stopPropagation();
@@ -4389,6 +4567,47 @@
         <span>Issued: ${fmtDate(todayISO())}</span>
         <span class="receipt-sign">Principal / Accounts</span>
       </div>`;
+  }
+
+  // Print a single payment receipt (dual copy, half-A4) directly — used from Fee Collection Recent Entries
+  function printSingleReceipt(entryId){
+    const e = entries.find(x=>x.id===entryId);
+    if (!e) { toast('Entry nahi mili'); return; }
+    const s = students.find(x=>x.id===e.studentId);
+    if (!s) { toast('Student nahi mila'); return; }
+    const netRest = totalDue(s) - totalPaid(s.id);
+    const body = receiptBodyHTML(e, s, netRest);
+    const win = window.open('', '_blank');
+    if (!win) { toast('Popup block ho gaya — popup allow karein'); return; }
+    win.document.write(`<!DOCTYPE html><html><head><title>Receipt — ${esc(e.receiptNo)}</title><style>
+      @page { size: A4; margin: 0; }
+      * { box-sizing:border-box; }
+      body { margin:0; font-family: Arial, Helvetica, sans-serif; color:#1B2A4A; }
+      .top-half { height:148.5mm; width:100%; display:flex; align-items:stretch; gap:6mm; padding:8mm 10mm; }
+      .copy-col { flex:1; min-width:0; padding:0 4mm; position:relative; }
+      .copy-col.second { border-left:2px dashed #999; }
+      .copy-tag { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:#5B6B82; font-weight:700; margin-bottom:6px; text-align:center; }
+      .receipt-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; }
+      .receipt-school { font-weight:800; font-size:14.5px; line-height:1.25; }
+      .receipt-school-sub { font-size:10px; color:#5B6B82; margin-top:2px; }
+      .receipt-no { font-family:monospace; font-size:11px; background:#F4F1E9; padding:4px 8px; border-radius:5px; }
+      .receipt-row { display:flex; justify-content:space-between; font-size:12.5px; padding:6px 0; }
+      .receipt-row .k { color:#5B6B82; }
+      .receipt-row .v { font-weight:600; text-align:right; }
+      .receipt-amt-block { text-align:center; margin:14px 0 4px 0; }
+      .receipt-amt-label { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:#5B6B82; }
+      .receipt-amt { font-weight:800; font-size:26px; color:#2F8F5B; margin-top:2px; }
+      .receipt-foot { margin-top:44px; display:flex; justify-content:space-between; font-size:10.5px; color:#5B6B82; }
+      .receipt-sign { border-top:1px solid #D6D0BF; padding-top:5px; width:150px; text-align:center; }
+    </style></head><body>
+      <div class="top-half">
+        <div class="copy-col"><div class="copy-tag">Student Copy</div>${body}</div>
+        <div class="copy-col second"><div class="copy-tag">Office Copy</div>${body}</div>
+      </div>
+    </body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(()=> win.print(), 300);
   }
 
   function renderReceipts(){
@@ -5222,10 +5441,104 @@
   setInterval(tickClock, 1000*30);
   tickClock();
 
+  // ---------- PWA: viewport, manifest, icon, service worker, install button ----------
+  function setupPWA(){
+    try {
+      if (!document.querySelector('meta[name="viewport"]')) {
+        const vp = document.createElement('meta');
+        vp.name = 'viewport';
+        vp.content = 'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover';
+        document.head.appendChild(vp);
+      }
+      const addMeta = (name, content) => {
+        if (document.querySelector(`meta[name="${name}"]`)) return;
+        const m = document.createElement('meta'); m.name = name; m.content = content; document.head.appendChild(m);
+      };
+      addMeta('mobile-web-app-capable', 'yes');
+      addMeta('apple-mobile-web-app-capable', 'yes');
+      addMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
+      addMeta('apple-mobile-web-app-title', 'Fee Manager');
+      addMeta('theme-color', '#1B2A4A');
+
+      // App icon generated on canvas
+      const iconCanvas = document.createElement('canvas');
+      iconCanvas.width = 192; iconCanvas.height = 192;
+      const ctx = iconCanvas.getContext('2d');
+      ctx.fillStyle = '#1B2A4A'; ctx.fillRect(0,0,192,192);
+      ctx.fillStyle = '#E8A33D';
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(28,28,136,136,24); ctx.fill(); }
+      else { ctx.fillRect(28,28,136,136); }
+      ctx.fillStyle = '#1B2A4A'; ctx.font = 'bold 64px Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('EK', 96, 100);
+      const iconUrl = iconCanvas.toDataURL('image/png');
+
+      if (!document.querySelector('link[rel="apple-touch-icon"]')) {
+        const at = document.createElement('link'); at.rel = 'apple-touch-icon'; at.href = iconUrl; document.head.appendChild(at);
+      }
+
+      const manifest = {
+        name: (schoolSettings && schoolSettings.name ? schoolSettings.name + ' — Fee Manager' : 'Fee Manager'),
+        short_name: 'Fee Manager',
+        start_url: window.location.href,
+        display: 'standalone',
+        background_color: '#F4F1E9',
+        theme_color: '#1B2A4A',
+        icons: [
+          { src: iconUrl, sizes: '192x192', type: 'image/png' },
+          { src: iconUrl, sizes: '512x512', type: 'image/png' }
+        ]
+      };
+      const manifestUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/json' }));
+      const existingManifest = document.querySelector('link[rel="manifest"]');
+      if (existingManifest) existingManifest.href = manifestUrl;
+      else { const ml = document.createElement('link'); ml.rel = 'manifest'; ml.href = manifestUrl; document.head.appendChild(ml); }
+
+      // Best-effort service worker (enables the native install prompt on browsers that support it)
+      if ('serviceWorker' in navigator) {
+        try {
+          const swCode = "self.addEventListener('install',function(e){self.skipWaiting();});self.addEventListener('activate',function(e){self.clients.claim();});self.addEventListener('fetch',function(){});";
+          const swUrl = URL.createObjectURL(new Blob([swCode], { type: 'text/javascript' }));
+          navigator.serviceWorker.register(swUrl).catch(()=>{});
+        } catch(swErr) { /* ignore - install button falls back to manual instructions */ }
+      }
+
+      let deferredInstallPrompt = null;
+      const installBtn = document.getElementById('ekps-install-btn');
+      window.addEventListener('beforeinstallprompt', (e)=>{
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        if (installBtn) installBtn.style.display = 'inline-flex';
+      });
+      window.addEventListener('appinstalled', ()=>{
+        if (installBtn) installBtn.style.display = 'none';
+        deferredInstallPrompt = null;
+      });
+
+      if (installBtn) {
+        installBtn.style.display = 'inline-flex';
+        installBtn.addEventListener('click', ()=>{
+          if (deferredInstallPrompt) {
+            deferredInstallPrompt.prompt();
+            deferredInstallPrompt.userChoice.finally(()=>{ deferredInstallPrompt = null; });
+          } else {
+            const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+            alert(isIOS
+              ? 'App install karne ke liye:\n1) Safari me neeche diye Share (⬆) icon par tap karein\n2) "Add to Home Screen" chunein'
+              : 'App install karne ke liye:\nBrowser ke menu (⋮) me "Add to Home screen" ya "Install App" option dhoondein aur select karein.');
+          }
+        });
+      }
+    } catch(err) { /* PWA setup is best-effort only */ }
+  }
+
   loadQueueFromStorage();
   loadData();
+  setupPWA();
   render();
   setSyncStatus(syncStatus);
   if (syncQueue.length) processSyncQueue();
 })();
 </script>
+
+</body>
+</html>
