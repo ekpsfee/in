@@ -527,6 +527,7 @@
 </head>
 <body>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 
 <div id="ekps-root">
   <div class="ekps-drawer-overlay" id="ekps-drawer-overlay"></div>
@@ -873,6 +874,21 @@
     const otherCharges = Math.max(0, alloc.otherChargesFull - Object.values(alloc.otherChargesPaidByItem).reduce((a,v)=>a+v,0));
     const total = buckets.current + buckets.b1_2 + buckets.b3_5 + buckets.b6plus + otherCharges;
     return Object.assign({ otherCharges, total }, buckets);
+  }
+  // Due amount accumulated from the student's fee-start month up to (and including) the
+  // current running month — i.e. everything that has "come due" so far this session
+  // (tuition dues for elapsed months + old due/exam/uniform/book/other charges), minus
+  // whatever has already been paid against those. Future months (beyond current month)
+  // are NOT included — that's what differentiates this from Total Due (full session).
+  function dueTillCurrentMonth(s){ return studentDueBuckets(s).total; }
+  // Most recent payment entry for a student (by date, falling back to entry id for same-day ties)
+  function lastPaymentOf(id){
+    const list = studentEntries(id).slice().sort((a,b)=> (a.date||'').localeCompare(b.date||'') || (a.id-b.id));
+    return list.length ? list[list.length-1] : null;
+  }
+  function lastPaymentAmountOf(id){
+    const lp = lastPaymentOf(id);
+    return lp ? lp.amount : 0;
   }
 
   // ---------- Transport helpers ----------
@@ -2157,10 +2173,10 @@
       <div class="panel">
         <div class="panel-body" style="padding:0; overflow:auto;">
           <table class="data">
-            <thead><tr><th>ID</th><th>Class</th><th>Name</th><th>Mobile No.</th><th>Monthly Fee</th><th>Total Due</th><th>Paid</th><th>Rest Due</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>ID</th><th>Class</th><th>Name</th><th>Mobile No.</th><th>Monthly Fee</th><th>Total Due</th><th>Due Till ${esc(currentMonthName())} (Current)</th><th>Paid</th><th>Rest Due</th><th>Status</th><th></th></tr></thead>
             <tbody>
               ${list.length ? list.map(s=>{
-                const due = totalDue(s), paid = totalPaid(s.id), rest = due-paid, st = statusOf(s);
+                const due = totalDue(s), paid = totalPaid(s.id), rest = due-paid, st = statusOf(s), dueTillNow = dueTillCurrentMonth(s);
                 return `<tr data-created-by="${s.createdBy||'admin'}">
                   <td><span class="id-chip">${s.id}</span></td>
                   <td><span class="cls-chip">${esc(s.cls)}</span></td>
@@ -2168,6 +2184,7 @@
                   <td class="mono">${s.mobNo ? esc(s.mobNo) : '<span style="color:var(--slate);">—</span>'}</td>
                   <td class="mono">${fmt(s.monthlyFee)}</td>
                   <td class="mono">${fmt(due)}</td>
+                  <td class="mono" style="font-weight:700; color:${dueTillNow>0?'var(--rust)':'var(--green)'};">${fmt(dueTillNow)}</td>
                   <td class="mono">${fmt(paid)}</td>
                   <td class="mono">${fmt(rest)}</td>
                   <td><span class="status-badge status-${st}">${st}</span></td>
@@ -2177,7 +2194,7 @@
                     ${isAdmin() ? `<div class="icon-btn js-del-btn" data-del="${s.id}" title="Delete">${ICONS.trash}</div>` : ''}
                   </div></td>
                 </tr>`;
-              }).join('') : `<tr><td colspan="10"><div class="empty-state">Koi student nahi mila</div></td></tr>`}
+              }).join('') : `<tr><td colspan="11"><div class="empty-state">Koi student nahi mila</div></td></tr>`}
             </tbody>
           </table>
         </div>
@@ -4457,6 +4474,108 @@
     toast('Excel file download ho rahi hai');
   }
 
+  // ---------- Current Month Due Bill — Excel export (A4 print-ready, color-coded) ----------
+  // Uses ExcelJS (not the lightweight SheetJS reader/writer used elsewhere) because actually
+  // painting cell background colors into a real .xlsx file requires ExcelJS's full styling
+  // support — the free SheetJS build used for the other exports can only write plain values.
+  async function exportCurrentMonthDueExcel(){
+    if (typeof ExcelJS === 'undefined') { toast('Excel styling library load nahi hui — internet check karein'); return; }
+    const list = students.slice().sort((a,b)=> CLASS_ORDER.indexOf(a.cls)-CLASS_ORDER.indexOf(b.cls) || a.id-b.id);
+    if (!list.length) { toast('Koi student nahi mila'); return; }
+
+    const curMonthLabel = `Current Month (${currentMonthName()}) Due Amount`;
+    const headers = ['ID','Class','Name','Mobile No.','Monthly Fee','Total Due','Total Paid','Rest Due',curMonthLabel,'Last Payment Amount','Last Payment Date'];
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(`Due Bill - ${currentMonthName()}`, {
+      pageSetup: {
+        paperSize: 9,            // A4
+        orientation: 'landscape',
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        margins: { left:0.3, right:0.3, top:0.4, bottom:0.4, header:0.2, footer:0.2 }
+      },
+      views: [{ state: 'frozen', ySplit: 1 }]
+    });
+
+    ws.columns = [
+      { header:'ID', key:'id', width:7 },
+      { header:'Class', key:'cls', width:9 },
+      { header:'Name', key:'name', width:24 },
+      { header:'Mobile No.', key:'mob', width:13 },
+      { header:'Monthly Fee', key:'mf', width:12 },
+      { header:'Total Due', key:'due', width:12 },
+      { header:'Total Paid', key:'paid', width:12 },
+      { header:'Rest Due', key:'rest', width:11 },
+      { header:curMonthLabel, key:'curdue', width:18 },
+      { header:'Last Payment Amount', key:'lpamt', width:15 },
+      { header:'Last Payment Date', key:'lpdate', width:15 },
+    ];
+
+    // Header row styling
+    const headerRow = ws.getRow(1);
+    headerRow.eachCell(cell=>{
+      cell.font = { bold:true, color:{ argb:'FFFFFFFF' } };
+      cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF1B2A4A' } };
+      cell.alignment = { vertical:'middle', horizontal:'center' };
+      cell.border = { bottom:{ style:'thin', color:{argb:'FFCCCCCC'} } };
+    });
+    headerRow.height = 20;
+
+    const GREEN_FILL = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFC6EFCE' } };
+    const GREEN_FONT = { color:{ argb:'FF006100' } };
+    const RED_FILL   = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFFC7CE' } };
+    const RED_FONT   = { color:{ argb:'FF9C0006' } };
+    const THIN_BORDER = { style:'thin', color:{ argb:'FFE0E0E0' } };
+
+    list.forEach(s=>{
+      const due = totalDue(s), paid = totalPaid(s.id), rest = due - paid;
+      const dueTillNow = dueTillCurrentMonth(s);
+      const lp = lastPaymentOf(s.id);
+
+      const row = ws.addRow({
+        id: s.id,
+        cls: s.cls,
+        name: s.name,
+        mob: s.mobNo || '',
+        mf: s.monthlyFee || 0,
+        due: due,
+        paid: paid,
+        rest: rest,
+        curdue: dueTillNow,
+        lpamt: lp ? lp.amount : 0,
+        lpdate: lp ? fmtDate(lp.date) : '—',
+      });
+
+      // Fully paid (no rest due at all) -> green. Zero payment made so far -> red. Else default.
+      let fill = null, font = null;
+      if (rest <= 0) { fill = GREEN_FILL; font = GREEN_FONT; }
+      else if (paid <= 0) { fill = RED_FILL; font = RED_FONT; }
+
+      row.eachCell(cell=>{
+        cell.border = { top:THIN_BORDER, bottom:THIN_BORDER, left:THIN_BORDER, right:THIN_BORDER };
+        if (fill) cell.fill = fill;
+        if (font) cell.font = font;
+      });
+    });
+
+    ws.autoFilter = { from:{ row:1, column:1 }, to:{ row:1, column:headers.length } };
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Current_Month_Due_Bill_${currentMonthName()}_${todayISO()}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast(`${currentMonthName()} tak ka Due Bill Excel (color-coded) download ho raha hai`);
+  }
+
   // ---------- LEDGER ----------
   function renderLedger(){
     const classes = ['all', ...CLASS_ORDER.filter(c=>students.some(s=>s.cls===c))];
@@ -4479,15 +4598,16 @@
         <span class="btn btn-ghost" id="ekps-demand-pdf">🧾 Demand Bills PDF (Class-wise, A4)</span>
         <span class="btn btn-ghost" id="ekps-current-month-pdf">📅 Current Month (${currentMonthName()}) Demand Bills</span>
         <span class="btn btn-ghost" id="ekps-due-statement-pdf">📊 Multi-Level Due Statement</span>
+        <span class="btn btn-ghost" id="ekps-current-month-excel">⬇ Current Month Due Bill (Excel)</span>
         <span class="btn btn-accent" id="ekps-export-excel">⬇ Export Excel (Month-wise)</span>
       </div>
       <div class="panel">
         <div class="panel-body" style="padding:0; overflow:auto;">
           <table class="data">
-            <thead><tr><th></th><th>ID</th><th>Class</th><th>Name</th><th>Total Due</th><th>Total Paid</th><th>Rest Due</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th></th><th>ID</th><th>Class</th><th>Name</th><th>Total Due</th><th>Due Till ${esc(currentMonthName())} (Current)</th><th>Total Paid</th><th>Rest Due</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               ${list.length ? list.map(s=>{
-                const due = totalDue(s), paid = totalPaid(s.id), rest = due-paid, st = statusOf(s);
+                const due = totalDue(s), paid = totalPaid(s.id), rest = due-paid, st = statusOf(s), dueTillNow = dueTillCurrentMonth(s);
                 const expanded = !!ledgerExpanded[s.id];
                 const months = MONTHS.map(m=>{
                   const v = monthPaid(s.id, m);
@@ -4499,6 +4619,7 @@
                   <td><span class="cls-chip">${esc(s.cls)}</span></td>
                   <td style="font-weight:600;">${esc(s.name)}</td>
                   <td class="mono">${fmt(due)}</td>
+                  <td class="mono" style="font-weight:700; color:${dueTillNow>0?'var(--rust)':'var(--green)'};">${fmt(dueTillNow)}</td>
                   <td class="mono">${fmt(paid)}</td>
                   <td class="mono">${fmt(rest)}</td>
                   <td><span class="status-badge status-${st}">${st}</span></td>
@@ -4508,9 +4629,9 @@
                     <span class="icon-btn" data-statement="${s.id}" title="Statement nikalein">🧾</span>
                   </td>
                 </tr>
-                ${expanded?`<tr class="detail-row"><td colspan="9"><div class="month-grid">${months}</div></td></tr>`:''}
+                ${expanded?`<tr class="detail-row"><td colspan="10"><div class="month-grid">${months}</div></td></tr>`:''}
                 `;
-              }).join('') : `<tr><td colspan="9"><div class="empty-state">Koi record nahi mila</div></td></tr>`}
+              }).join('') : `<tr><td colspan="10"><div class="empty-state">Koi record nahi mila</div></td></tr>`}
             </tbody>
           </table>
         </div>
@@ -4520,6 +4641,7 @@
     document.getElementById('ekps-ledger-cls').addEventListener('change', e=>{ ledgerFilters.cls = e.target.value; renderLedger(); });
     document.getElementById('ekps-ledger-status').addEventListener('change', e=>{ ledgerFilters.status = e.target.value; renderLedger(); });
     document.getElementById('ekps-export-excel').addEventListener('click', exportExcel);
+    document.getElementById('ekps-current-month-excel').addEventListener('click', exportCurrentMonthDueExcel);
     document.getElementById('ekps-demand-pdf').addEventListener('click', downloadDemandBillsPDF);
     document.getElementById('ekps-current-month-pdf').addEventListener('click', downloadCurrentMonthDemandPDF);
     document.getElementById('ekps-due-statement-pdf').addEventListener('click', downloadDueStatementPDF);
