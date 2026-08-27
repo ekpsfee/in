@@ -4238,7 +4238,7 @@
   const DEMAND_SLIP_A5_CSS = `
     @page { size: A5; margin: 8mm; }
     * { box-sizing:border-box; }
-    html, body { margin:0; padding:0; width:132mm; height:194mm; overflow:hidden; }
+    html, body { margin:0; padding:0; }
     body { font-family: Arial, Helvetica, sans-serif; color:#1B2A4A; }
     .a5-wrap { width:132mm; height:194mm; border:1.5px solid #1B2A4A; border-radius:6px; padding:12px 14px; display:flex; flex-direction:column; overflow:hidden; }
     .a5-head { text-align:center; border-bottom:1.5px dashed #99a; padding-bottom:8px; margin-bottom:10px; }
@@ -4263,20 +4263,21 @@
     .a5-msg { font-size:10.5px; color:#444; text-align:center; margin-bottom:14px; }
     .a5-sign { display:flex; justify-content:space-between; align-items:flex-end; font-size:10px; }
     .a5-sign div { text-align:center; width:45%; border-top:1px solid #99a; padding-top:4px; }
+    .a5-page { page-break-after: always; }
+    .a5-page:last-child { page-break-after: auto; }
+    @media screen { .a5-page { margin: 0 auto 12px; box-shadow: 0 1px 4px rgba(0,0,0,.15); } body { background:#e8e8e8; padding:12px 0; } }
   `;
 
-  function downloadSingleCurrentMonthDemandA5(studentId){
-    const s = students.find(x=>x.id===studentId);
-    if (!s) { toast('Student nahi mila'); return; }
-    const month = currentMonthName();
-    const due = currentMonthDueOf(s);
-    const buckets = studentDueBuckets(s);
+  // Builds one A5 bill (inner markup only) for a student for a given month — shared by the
+  // single-student print and the class-wise batch print below.
+  function buildA5BillHtml(s, month){
+    const due = monthDueCascade(s, month);
+    const buckets = studentDueBuckets(s, month);
     const runningDue = buckets.current + buckets.b1_2 + buckets.b3_5 + buckets.b6plus + buckets.otherCharges;
     const rest = totalDue(s) - totalPaid(s.id);
     const notice = (schoolSettings.demandBillNotice || '').trim();
     const lp = lastPaymentOf(s.id);
-
-    const html = `<div class="a5-wrap">
+    return `<div class="a5-wrap">
       <div class="a5-head">
         <div class="a5-school">${esc(schoolSettings.name)}</div>
         ${schoolSettings.address?`<div class="a5-sub">${esc(schoolSettings.address)}</div>`:''}
@@ -4310,6 +4311,13 @@
         </div>
       </div>
     </div>`;
+  }
+
+  function downloadSingleCurrentMonthDemandA5(studentId, month){
+    const s = students.find(x=>x.id===studentId);
+    if (!s) { toast('Student nahi mila'); return; }
+    month = month || currentMonthName();
+    const html = `<div class="a5-page">${buildA5BillHtml(s, month)}</div>`;
 
     const win = window.open('', '_blank');
     if (!win) { toast('Popup block ho gaya — popup allow karein'); return; }
@@ -4317,6 +4325,92 @@
     win.document.close();
     win.focus();
     setTimeout(()=> win.print(), 300);
+  }
+
+  // ---------- Class-wise Select Month Demand Bills (A5, one student per page) ----------
+  function classWiseMonthDemandA5Modal(){
+    const classesWithStudents = CLASS_ORDER.filter(c => students.some(s=>s.cls===c));
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="ekps-cwm-bg">
+        <div class="modal" style="width:420px;">
+          <div class="modal-head"><h3>🗓️ Class-wise Select Month Demand Bills (A5)</h3><div class="icon-btn" id="ekps-cwm-close">✕</div></div>
+          <div class="modal-body">
+            <div class="hint" style="margin-bottom:12px;">Class aur Month chunein — us class ke saare due students ka A5-size Demand Bill (ek-ek page) print/PDF ho jayega.</div>
+            <div class="field">
+              <label>Class</label>
+              <select id="cwm-class">${classesWithStudents.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select>
+            </div>
+            <div class="field">
+              <label>Month</label>
+              <select id="cwm-month">${MONTHS.map(m=>`<option value="${m}" ${m===currentMonthName()?'selected':''}>${m}</option>`).join('')}</select>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <span class="btn btn-ghost" id="ekps-cwm-cancel">Cancel</span>
+            <span class="btn btn-accent" id="ekps-cwm-generate">Print / PDF</span>
+          </div>
+        </div>
+      </div>`;
+    const close = ()=>{ modalRoot.innerHTML=''; };
+    document.getElementById('ekps-cwm-close').addEventListener('click', close);
+    document.getElementById('ekps-cwm-cancel').addEventListener('click', close);
+    document.getElementById('ekps-cwm-bg').addEventListener('click', (e)=>{ if (e.target.id==='ekps-cwm-bg') close(); });
+    document.getElementById('ekps-cwm-generate').addEventListener('click', ()=>{
+      const cls = document.getElementById('cwm-class').value;
+      const month = document.getElementById('cwm-month').value;
+      close();
+      downloadClassWiseMonthDemandA5(cls, month);
+    });
+  }
+
+  function downloadClassWiseMonthDemandA5(cls, month){
+    const list = students.filter(s => s.cls===cls && monthDueCascade(s, month) > 0)
+      .sort((a,b)=> a.id-b.id);
+    if (!list.length) { toast(`Class ${cls} me ${month} ka koi due nahi hai`); return; }
+
+    const pagesHtml = list.map(s => `<div class="a5-page">${buildA5BillHtml(s, month)}</div>`).join('');
+
+    const win = window.open('', '_blank');
+    if (!win) { toast('Popup block ho gaya — popup allow karein'); return; }
+    win.document.write(`<!DOCTYPE html><html><head><title>Demand Bills — ${esc(cls)} — ${esc(month)}</title><style>${DEMAND_SLIP_A5_CSS}</style></head><body>${pagesHtml}</body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(()=> win.print(), 300);
+  }
+
+  // Small month-picker modal shown before generating an individual A5 Demand Bill,
+  // so any month (not just the current one) can be printed for a single student.
+  function singleDemandMonthModal(studentId){
+    const s = students.find(x=>x.id===studentId);
+    if (!s) { toast('Student nahi mila'); return; }
+    const applicable = applicableMonths(s);
+    const monthOptions = MONTHS.filter(m=> applicable.includes(m));
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="ekps-sdm-bg">
+        <div class="modal" style="width:380px;">
+          <div class="modal-head"><h3>🖨️ Demand Bill — ${esc(s.name)}</h3><div class="icon-btn" id="ekps-sdm-close">✕</div></div>
+          <div class="modal-body">
+            <div class="hint" style="margin-bottom:12px;">Kis mahine ka Demand Bill (A5) print/PDF karna hai, select karein.</div>
+            <div class="field">
+              <label>Month</label>
+              <select id="sdm-month">${monthOptions.map(m=>`<option value="${m}" ${m===currentMonthName()?'selected':''}>${m}</option>`).join('')}</select>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <span class="btn btn-ghost" id="ekps-sdm-cancel">Cancel</span>
+            <span class="btn btn-accent" id="ekps-sdm-generate">Print / PDF</span>
+          </div>
+        </div>
+      </div>`;
+    const close = ()=>{ modalRoot.innerHTML=''; };
+    document.getElementById('ekps-sdm-close').addEventListener('click', close);
+    document.getElementById('ekps-sdm-cancel').addEventListener('click', close);
+    document.getElementById('ekps-sdm-bg').addEventListener('click', (e)=>{ if (e.target.id==='ekps-sdm-bg') close(); });
+    document.getElementById('ekps-sdm-generate').addEventListener('click', ()=>{
+      const month = document.getElementById('sdm-month').value;
+      close();
+      downloadSingleCurrentMonthDemandA5(studentId, month);
+    });
   }
 
   // ---------- Shared: printable notice line for Demand Bills (admin-configurable) ----------
@@ -4592,81 +4686,6 @@
   }
 
   // ---------- Multi-Level (Aging) Due Statement Generator ----------
-  function downloadDueStatementPDF(){
-    const list = students.filter(s => (totalDue(s) - totalPaid(s.id)) > 0)
-      .sort((a,b)=> CLASS_ORDER.indexOf(a.cls)-CLASS_ORDER.indexOf(b.cls) || a.id-b.id);
-    if (!list.length) { toast('Koi bhi student due nahi hai'); return; }
-
-    const classes = CLASS_ORDER.filter(c => list.some(s=>s.cls===c));
-    let grand = { current:0, b1_2:0, b3_5:0, b6plus:0, otherCharges:0, total:0 };
-    let bodyHtml = '';
-    classes.forEach(cls=>{
-      const clsStudents = list.filter(s=>s.cls===cls);
-      let clsTotal = { current:0, b1_2:0, b3_5:0, b6plus:0, otherCharges:0, total:0 };
-      const rows = clsStudents.map(s=>{
-        const b = studentDueBuckets(s);
-        Object.keys(clsTotal).forEach(k=> clsTotal[k]+=b[k]);
-        return `<tr>
-          <td>${s.id}</td>
-          <td>${esc(s.name)}</td>
-          <td class="r">${b.current?fmt(b.current):'—'}</td>
-          <td class="r">${b.b1_2?fmt(b.b1_2):'—'}</td>
-          <td class="r">${b.b3_5?fmt(b.b3_5):'—'}</td>
-          <td class="r">${b.b6plus?fmt(b.b6plus):'—'}</td>
-          <td class="r">${b.otherCharges?fmt(b.otherCharges):'—'}</td>
-          <td class="r tot">${fmt(b.total)}</td>
-        </tr>`;
-      }).join('');
-      Object.keys(grand).forEach(k=> grand[k]+=clsTotal[k]);
-      bodyHtml += `
-        <div class="cls-title">Class: ${esc(cls)} (${clsStudents.length} students)</div>
-        <table>
-          <thead><tr><th>ID</th><th>Name</th><th>Current Month</th><th>1&ndash;2 Months</th><th>3&ndash;5 Months</th><th>6+ Months</th><th>Other Charges</th><th>Total Due</th></tr></thead>
-          <tbody>${rows}
-            <tr class="cls-sum">
-              <td colspan="2">Class Sub-Total</td>
-              <td class="r">${fmt(clsTotal.current)}</td>
-              <td class="r">${fmt(clsTotal.b1_2)}</td>
-              <td class="r">${fmt(clsTotal.b3_5)}</td>
-              <td class="r">${fmt(clsTotal.b6plus)}</td>
-              <td class="r">${fmt(clsTotal.otherCharges)}</td>
-              <td class="r tot">${fmt(clsTotal.total)}</td>
-            </tr>
-          </tbody>
-        </table>`;
-    });
-
-    const win = window.open('', '_blank');
-    if (!win) { toast('Popup block ho gaya — popup allow karein'); return; }
-    win.document.write(`<!DOCTYPE html><html><head><title>Multi-Level Due Statement</title><style>
-      @page { size: A4; margin: 10mm; }
-      * { box-sizing:border-box; }
-      body { margin:0; font-family: Arial, Helvetica, sans-serif; color:#1B2A4A; font-size:11px; }
-      .top-title { font-size:16px; font-weight:800; text-align:center; margin-bottom:2px; }
-      .top-sub { font-size:11px; text-align:center; color:#555; margin-bottom:14px; }
-      .cls-title { font-size:12.5px; font-weight:700; margin:14px 0 6px 0; background:#EFEBDD; padding:5px 8px; border-radius:4px; }
-      table { width:100%; border-collapse:collapse; margin-bottom:6px; }
-      th, td { border:1px solid #ccc; padding:4px 6px; font-size:10.5px; }
-      th { background:#1B2A4A; color:#fff; text-align:left; }
-      td.r { text-align:right; font-family:monospace; }
-      td.tot { font-weight:800; color:#C1502E; }
-      tr.cls-sum { background:#FBF1DC; font-weight:700; }
-      .grand { margin-top:16px; border-top:2px solid #1B2A4A; padding-top:8px; font-size:12px; font-weight:800; text-align:right; }
-    </style></head><body>
-      <div class="top-title">${esc(schoolSettings.name)}</div>
-      <div class="top-sub">Multi-Level Due Statement (Aging) &middot; Generated ${fmtDate(todayISO())} &middot; As of ${esc(currentMonthName())}</div>
-      ${bodyHtml}
-      <div class="grand">
-        Grand Total Due: Current Month ${fmt(grand.current)} &nbsp;|&nbsp; 1&ndash;2 Months ${fmt(grand.b1_2)} &nbsp;|&nbsp;
-        3&ndash;5 Months ${fmt(grand.b3_5)} &nbsp;|&nbsp; 6+ Months ${fmt(grand.b6plus)} &nbsp;|&nbsp;
-        Other Charges ${fmt(grand.otherCharges)} &nbsp;|&nbsp; Total: ${fmt(grand.total)}
-      </div>
-    </body></html>`);
-    win.document.close();
-    win.focus();
-    setTimeout(()=> win.print(), 300);
-  }
-
   function exportExcel(){
     if (typeof XLSX === 'undefined') { toast('Excel library load nahi hui — internet check karein'); return; }
     const list = students.slice().sort((a,b)=> CLASS_ORDER.indexOf(a.cls)-CLASS_ORDER.indexOf(b.cls) || a.id-b.id);
@@ -4831,7 +4850,7 @@
         <span class="btn btn-ghost" id="ekps-demand-pdf">🧾 Demand Bills PDF (Class-wise, A4)</span>
         <span class="btn btn-ghost" id="ekps-current-month-pdf">📅 Current Month (${currentMonthName()}) Demand Bills</span>
         <span class="btn btn-ghost" id="ekps-select-month-pdf">🗓️ Select Month Demand Bills</span>
-        <span class="btn btn-ghost" id="ekps-due-statement-pdf">📊 Multi-Level Due Statement</span>
+        <span class="btn btn-ghost" id="ekps-classwise-month-a5">🗓️ Class-wise Select Month Demand Bills (A5)</span>
         <span class="btn btn-ghost" id="ekps-current-month-excel">⬇ Current Month Due Bill (Excel)</span>
         <span class="btn btn-accent" id="ekps-export-excel">⬇ Export Excel (Month-wise)</span>
         <span class="btn btn-ghost" id="ekps-demand-notice-settings" title="Demand Bill par print hone wala notice message set karein">🔔 Demand Bill Notice</span>
@@ -4889,7 +4908,7 @@
     document.getElementById('ekps-demand-pdf').addEventListener('click', downloadDemandBillsPDF);
     document.getElementById('ekps-current-month-pdf').addEventListener('click', downloadCurrentMonthDemandPDF);
     document.getElementById('ekps-select-month-pdf').addEventListener('click', selectMonthDemandModal);
-    document.getElementById('ekps-due-statement-pdf').addEventListener('click', downloadDueStatementPDF);
+    document.getElementById('ekps-classwise-month-a5').addEventListener('click', classWiseMonthDemandA5Modal);
     document.getElementById('ekps-demand-notice-settings').addEventListener('click', demandNoticeSettingsModal);
     contentEl.querySelectorAll('[data-toggle]').forEach(el=> el.addEventListener('click', ()=>{
       const id = parseInt(el.dataset.toggle);
@@ -4912,7 +4931,7 @@
     }));
     contentEl.querySelectorAll('[data-single-demand]').forEach(el=> el.addEventListener('click', (e)=>{
       e.stopPropagation();
-      downloadSingleCurrentMonthDemandA5(parseInt(el.dataset.singleDemand));
+      singleDemandMonthModal(parseInt(el.dataset.singleDemand));
     }));
   }
 
