@@ -605,7 +605,7 @@
   let entries = [];
   let route = 'dashboard';
   let ledgerExpanded = {};
-  let ledgerFilters = { cls:'all', status:'all', q:'' };
+  let ledgerFilters = { cls:'all', status:'all', q:'', village:'all', van:'all' };
   let studentQ = '';
   let editingStudentId = null;
   let showStudentModal = false;
@@ -637,7 +637,7 @@
   let promotionSelected = {};
 
   // --- Exam Manager state ---
-  let schoolSettings = { name:'Education Key Public School', address:'', phone:'', principalName:'', principalSign:'', instructions:['Admit card exam hall me laana anivarya hai.','Mobile phone allowed nahi hai.'] };
+  let schoolSettings = { name:'Education Key Public School', address:'', phone:'', principalName:'', principalSign:'', instructions:['Admit card exam hall me laana anivarya hai.','Mobile phone allowed nahi hai.'], demandBillNotice:'नोट: यदि Demand Bill में किसी प्रकार के संशोधन की आवश्यकता है, तो कृपया जल्द से जल्द उचित प्रमाण (Proof) के साथ स्कूल ऑफिस में संपर्क करें।' };
   let exams = [];
   let examSubView = 'settings';
   let examSelectedId = null;
@@ -772,6 +772,15 @@
   }
   function totalDue(s){ return (s.monthlyFee*applicableMonths(s).length) + s.examFee + s.oldDue + s.uniformBill + s.bookBill + s.otherBill + billsTotal(s); }
   function studentEntries(id){ return entries.filter(e => e.studentId === id); }
+  // Most recent fee payment entry for a student (used to show "Last Payment" on Demand Bills)
+  function lastPaymentOf(id){
+    const list = studentEntries(id).slice().sort((a,b)=> (a.date||'').localeCompare(b.date||'') || a.id-b.id);
+    return list.length ? list[list.length-1] : null;
+  }
+  function lastPaymentLineShort(id){
+    const lp = lastPaymentOf(id);
+    return lp ? `${fmt(lp.amount)} &middot; ${fmtDate(lp.date)}` : 'Koi payment nahi';
+  }
   function totalPaid(id){ return studentEntries(id).reduce((a,e)=>a+e.amount,0); }
   function monthPaid(id, month){ return studentEntries(id).filter(e=>e.month===month).reduce((a,e)=>a+e.amount,0); }
   function statusOf(s){
@@ -853,9 +862,12 @@
   function currentMonthDueOf(s){
     return monthDueCascade(s, currentMonthName());
   }
-  // Aging buckets for monthly tuition dues (multi-level due statement)
-  function studentDueBuckets(s){
-    const curIdx = currentMonthIndex();
+  // Aging buckets for monthly tuition dues (multi-level due statement).
+  // Pass an explicit `uptoMonth` (a MONTHS entry) to compute buckets as-of a chosen month
+  // instead of the real current calendar month — used by the Select-Month Demand Bill tool.
+  function studentDueBuckets(s, uptoMonth){
+    const idx = uptoMonth ? MONTHS.indexOf(uptoMonth) : -1;
+    const curIdx = idx !== -1 ? idx : currentMonthIndex();
     const elapsed = MONTHS.slice(0, curIdx+1);
     const alloc = monthlyAllocation(s);
     const applicable = applicableMonths(s);
@@ -2200,7 +2212,13 @@
         </div>
       </div>`;
 
-    document.getElementById('ekps-student-search').addEventListener('input', (e)=>{ studentQ = e.target.value; renderStudents(); });
+    document.getElementById('ekps-student-search').addEventListener('input', (e)=>{
+      studentQ = e.target.value;
+      const pos = e.target.selectionStart;
+      renderStudents();
+      const el = document.getElementById('ekps-student-search');
+      if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch(err){} }
+    });
     document.getElementById('ekps-add-student').addEventListener('click', ()=>{ editingStudentId=null; studentModal(); });
     document.getElementById('ekps-bulk-bill').addEventListener('click', ()=> bulkBillModal());
     contentEl.querySelectorAll('[data-edit]').forEach(el=> el.addEventListener('click', ()=>{ editingStudentId = parseInt(el.dataset.edit); studentModal(); }));
@@ -4110,15 +4128,16 @@
         const slips = page.map(s=>{
           const due = totalDue(s), paid = totalPaid(s.id), rest = due-paid;
           return `<div class="slip">
-            <div class="slip-head">Education Key Public School</div>
+            <div class="slip-head">${esc(schoolSettings.name)}</div>
             <div class="slip-sub">Fee Demand Notice &middot; ${fmtDate(todayISO())}</div>
-            <div class="slip-row"><span>Student ID</span><span>${s.id}</span></div>
-            <div class="slip-row"><span>Name</span><span>${esc(s.name)}</span></div>
+            <div class="slip-row"><span>Student</span><span>${esc(s.name)} (ID ${s.id})</span></div>
             <div class="slip-row"><span>Class</span><span>${esc(s.cls)}</span></div>
             <div class="slip-row"><span>Total Due</span><span>${fmt(due)}</span></div>
             <div class="slip-row"><span>Total Paid</span><span>${fmt(paid)}</span></div>
+            <div class="slip-row"><span>Last Payment</span><span>${lastPaymentLineShort(s.id)}</span></div>
             <div class="slip-row rest"><span>Amount Payable</span><span>${fmt(rest)}</span></div>
             <div class="slip-foot">Kripya jald se jald fee jama karein &middot; Accounts Office</div>
+            ${demandNoticeHtml()}
           </div>`;
         }).join('');
         sheetsHtml += `<div class="sheet">
@@ -4130,25 +4149,39 @@
 
     const win = window.open('', '_blank');
     if (!win) { toast('Popup block ho gaya — popup allow karein'); return; }
-    win.document.write(`<!DOCTYPE html><html><head><title>Fee Demand Bills</title><style>
-      @page { size: A4; margin: 10mm; }
-      * { box-sizing:border-box; }
-      body { margin:0; font-family: Arial, Helvetica, sans-serif; color:#1B2A4A; }
-      .sheet { page-break-after: always; }
-      .sheet:last-child { page-break-after: auto; }
-      .sheet-title { font-size:13px; font-weight:700; margin-bottom:8px; text-align:center; }
-      .grid { display:grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap:5mm; height: 267mm; }
-      .slip { border:1.5px dashed #99a; border-radius:4px; padding:9px 11px; font-size:11px; display:flex; flex-direction:column; }
-      .slip-head { font-weight:800; font-size:12.5px; }
-      .slip-sub { font-size:9px; color:#555; margin-bottom:5px; border-bottom:1px solid #ccc; padding-bottom:5px; }
-      .slip-row { display:flex; justify-content:space-between; padding:2px 0; font-size:11px; }
-      .slip-row.rest { font-weight:800; border-top:1px dashed #99a; margin-top:5px; padding-top:5px; font-size:12.5px; color:#C1502E; }
-      .slip-foot { margin-top:auto; font-size:8.5px; color:#666; padding-top:6px; border-top:1px dashed #ccc; }
-    </style></head><body>${sheetsHtml}</body></html>`);
+    win.document.write(`<!DOCTYPE html><html><head><title>Fee Demand Bills</title><style>${DEMAND_SLIP_CSS}</style></head><body>${sheetsHtml}</body></html>`);
     win.document.close();
     win.focus();
     setTimeout(()=> win.print(), 300);
   }
+
+  // ---------- Shared: fixed-size 8-per-A4-page demand slip CSS (used by all 3 demand bill generators) ----------
+  // grid-template-rows (explicit, not "auto") + min-height:0 + overflow:hidden on .slip is the actual fix:
+  // without these, a CSS Grid row grows to fit its content by default, which pushed later slips off the
+  // fixed A4 page and made prints look "over/messy". This guarantees exactly 2x4 = 8 fixed-size slips per page.
+  const DEMAND_SLIP_CSS = `
+    @page { size: A4; margin: 10mm; }
+    * { box-sizing:border-box; }
+    html, body { height:100%; }
+    body { margin:0; font-family: Arial, Helvetica, sans-serif; color:#1B2A4A; }
+    .sheet { page-break-after: always; display:flex; flex-direction:column; height:277mm; }
+    .sheet:last-child { page-break-after: auto; }
+    .sheet-title { font-size:12px; font-weight:700; margin-bottom:6px; text-align:center; flex:0 0 auto; }
+    .grid { flex:1 1 auto; min-height:0; display:grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(4, 1fr); gap:4mm; }
+    .slip { border:1.5px dashed #99a; border-radius:4px; padding:7px 9px; font-size:9.5px; display:flex; flex-direction:column; overflow:hidden; min-height:0; min-width:0; page-break-inside:avoid; }
+    .slip-head { font-weight:800; font-size:11px; flex:0 0 auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .slip-sub { font-size:7.5px; color:#555; margin-bottom:3px; padding-bottom:3px; border-bottom:1px solid #ccc; flex:0 0 auto; }
+    .slip-row { display:flex; justify-content:space-between; gap:6px; padding:1px 0; font-size:9.5px; flex:0 0 auto; }
+    .slip-row span:first-child { color:#555; flex:0 0 auto; }
+    .slip-row span:last-child { font-weight:700; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .slip-row.rest { font-weight:800; border-top:1px dashed #99a; margin-top:3px; padding-top:3px; font-size:11px; color:#1B2A4A; }
+    .slip-row.running { font-weight:800; font-size:10px; color:#C1502E; padding-top:1px; }
+    .slip-row.rest2 { font-weight:800; font-size:9.5px; color:#2F8F5B; padding-top:1px; }
+    .slip-row.lastpay { font-size:8px; color:#666; padding-top:1px; }
+    .slip-row.lastpay span:last-child { font-weight:600; }
+    .slip-foot { margin-top:auto; font-size:6.8px; color:#666; padding-top:4px; border-top:1px dashed #ccc; line-height:1.25; flex:0 0 auto; }
+    .slip-notice { margin-top:3px; padding-top:3px; border-top:1px dashed #c99; font-size:6.8px; color:#9A4A1F; font-weight:700; line-height:1.25; flex:0 0 auto; }
+  `;
 
   // ---------- Current Month-wise Demand Bill Generator ----------
   function downloadCurrentMonthDemandPDF(){
@@ -4171,15 +4204,15 @@
           return `<div class="slip">
             <div class="slip-head">${esc(schoolSettings.name)}</div>
             <div class="slip-sub">Current Month Fee Demand &middot; ${esc(month)} &middot; ${fmtDate(todayISO())}</div>
-            <div class="slip-row"><span>Student ID</span><span>${s.id}</span></div>
-            <div class="slip-row"><span>Name</span><span>${esc(s.name)}</span></div>
+            <div class="slip-row"><span>Student</span><span>${esc(s.name)} (ID ${s.id})</span></div>
             <div class="slip-row"><span>Class</span><span>${esc(s.cls)}</span></div>
-            <div class="slip-row"><span>Month</span><span>${esc(month)}</span></div>
             <div class="slip-row"><span>Monthly Fee</span><span>${fmt(s.monthlyFee)}</span></div>
             <div class="slip-row rest"><span>${esc(month)} Payable</span><span>${fmt(due)}</span></div>
-            <div class="slip-row" style="border-top:1px dashed #ccc; margin-top:4px; padding-top:4px;"><span>Running Months Due (Upto ${esc(month)})</span><span>${fmt(runningDue)}</span></div>
-            <div class="slip-row rest2"><span>Full Session Total Rest Due</span><span>${fmt(rest)}</span></div>
-            <div class="slip-foot">"बच्चे की कामयाबी में ही माता-पिता की ख़ुशी है। उसकी पढ़ाई में कोई रुकावट न आए, इसके लिए कृपया बकाया फीस समय पर जमा कर हमारा सहयोग करें। धन्यवाद! 🙏" &middot; Accounts Office</div>
+            <div class="slip-row running"><span>Running Due (Upto ${esc(month).slice(0,3)})</span><span>${fmt(runningDue)}</span></div>
+            <div class="slip-row rest2"><span>Full Session Rest Due</span><span>${fmt(rest)}</span></div>
+            <div class="slip-row lastpay"><span>Last Payment</span><span>${lastPaymentLineShort(s.id)}</span></div>
+            <div class="slip-foot">बच्चे की पढ़ाई में रुकावट न आए — कृपया बकाया फीस समय पर जमा करें। धन्यवाद! 🙏 &middot; Accounts Office</div>
+            ${demandNoticeHtml()}
           </div>`;
         }).join('');
         sheetsHtml += `<div class="sheet">
@@ -4191,25 +4224,212 @@
 
     const win = window.open('', '_blank');
     if (!win) { toast('Popup block ho gaya — popup allow karein'); return; }
-    win.document.write(`<!DOCTYPE html><html><head><title>Current Month Demand Bills — ${esc(month)}</title><style>
-      @page { size: A4; margin: 10mm; }
-      * { box-sizing:border-box; }
-      body { margin:0; font-family: Arial, Helvetica, sans-serif; color:#1B2A4A; }
-      .sheet { page-break-after: always; }
-      .sheet:last-child { page-break-after: auto; }
-      .sheet-title { font-size:13px; font-weight:700; margin-bottom:8px; text-align:center; }
-      .grid { display:grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap:5mm; height: 267mm; }
-      .slip { border:1.5px dashed #99a; border-radius:4px; padding:9px 11px; font-size:11px; display:flex; flex-direction:column; }
-      .slip-head { font-weight:800; font-size:12.5px; }
-      .slip-sub { font-size:9px; color:#555; margin-bottom:5px; border-bottom:1px solid #ccc; padding-bottom:5px; }
-      .slip-row { display:flex; justify-content:space-between; padding:2px 0; font-size:11px; }
-      .slip-row.rest { font-weight:800; border-top:1px dashed #99a; margin-top:5px; padding-top:5px; font-size:12.5px; color:#C1502E; }
-      .slip-row.rest2 { font-weight:800; font-size:11.5px; color:#B9862A; padding-top:2px; }
-      .slip-foot { margin-top:auto; font-size:8.5px; color:#666; padding-top:6px; border-top:1px dashed #ccc; }
-    </style></head><body>${sheetsHtml}</body></html>`);
+    win.document.write(`<!DOCTYPE html><html><head><title>Current Month Demand Bills — ${esc(month)}</title><style>${DEMAND_SLIP_CSS}</style></head><body>${sheetsHtml}</body></html>`);
     win.document.close();
     win.focus();
     setTimeout(()=> win.print(), 300);
+  }
+
+  // ---------- Single Student Current-Month Demand Bill (A5, one-by-one print/PDF) ----------
+  // Used from Fee Ledger -> click on "Due Till (Current)" amount, so a student missed from the
+  // class-wise/current-month batch run can still be handed an individual A5 demand bill.
+  // Fixed-size A5 page: explicit mm width/height + overflow:hidden on html/body/.a5-wrap, same fix used
+  // for the 8-per-A4-page grid above — without this the page can grow/shrink with content and print messy.
+  const DEMAND_SLIP_A5_CSS = `
+    @page { size: A5; margin: 8mm; }
+    * { box-sizing:border-box; }
+    html, body { margin:0; padding:0; width:132mm; height:194mm; overflow:hidden; }
+    body { font-family: Arial, Helvetica, sans-serif; color:#1B2A4A; }
+    .a5-wrap { width:132mm; height:194mm; border:1.5px solid #1B2A4A; border-radius:6px; padding:12px 14px; display:flex; flex-direction:column; overflow:hidden; }
+    .a5-head { text-align:center; border-bottom:1.5px dashed #99a; padding-bottom:8px; margin-bottom:10px; }
+    .a5-school { font-size:17px; font-weight:800; }
+    .a5-sub { font-size:10.5px; color:#555; margin-top:2px; }
+    .a5-title { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .a5-title h2 { font-size:13px; margin:0; text-transform:uppercase; letter-spacing:.03em; }
+    .a5-title .date { font-size:10.5px; color:#555; }
+    .a5-info { display:grid; grid-template-columns: 1fr 1fr; gap:3px 14px; font-size:11px; margin-bottom:10px; }
+    .a5-info div span:first-child { color:#555; margin-right:4px; }
+    .a5-info div span:last-child { font-weight:700; }
+    .a5-table { width:100%; border-collapse:collapse; font-size:11.5px; margin-bottom:10px; }
+    .a5-table td { padding:5px 6px; border:1px solid #ccd; }
+    .a5-table td:first-child { color:#444; }
+    .a5-table td:last-child { text-align:right; font-weight:700; }
+    .a5-table tr.payable td { font-weight:800; font-size:13px; background:#FFF3EC; color:#1B2A4A; }
+    .a5-table tr.running td { font-weight:800; font-size:12px; color:#C1502E; }
+    .a5-table tr.rest td { font-weight:800; font-size:12px; background:#EAF7EF; color:#2F8F5B; }
+    .a5-table tr.lastpay td { font-size:10px; color:#555; font-weight:600; background:#F5F6FA; }
+    .a5-notice { font-size:9.5px; color:#9A4A1F; font-weight:700; line-height:1.35; border-top:1px dashed #c99; padding-top:6px; margin-bottom:10px; }
+    .a5-foot { margin-top:auto; }
+    .a5-msg { font-size:10.5px; color:#444; text-align:center; margin-bottom:14px; }
+    .a5-sign { display:flex; justify-content:space-between; align-items:flex-end; font-size:10px; }
+    .a5-sign div { text-align:center; width:45%; border-top:1px solid #99a; padding-top:4px; }
+  `;
+
+  function downloadSingleCurrentMonthDemandA5(studentId){
+    const s = students.find(x=>x.id===studentId);
+    if (!s) { toast('Student nahi mila'); return; }
+    const month = currentMonthName();
+    const due = currentMonthDueOf(s);
+    const buckets = studentDueBuckets(s);
+    const runningDue = buckets.current + buckets.b1_2 + buckets.b3_5 + buckets.b6plus + buckets.otherCharges;
+    const rest = totalDue(s) - totalPaid(s.id);
+    const notice = (schoolSettings.demandBillNotice || '').trim();
+    const lp = lastPaymentOf(s.id);
+
+    const html = `<div class="a5-wrap">
+      <div class="a5-head">
+        <div class="a5-school">${esc(schoolSettings.name)}</div>
+        ${schoolSettings.address?`<div class="a5-sub">${esc(schoolSettings.address)}</div>`:''}
+        ${schoolSettings.phone?`<div class="a5-sub">Ph: ${esc(schoolSettings.phone)}</div>`:''}
+      </div>
+      <div class="a5-title">
+        <h2>Fee Demand Bill</h2>
+        <div class="date">${fmtDate(todayISO())}</div>
+      </div>
+      <div class="a5-info">
+        <div><span>Student</span><span>${esc(s.name)}</span></div>
+        <div><span>ID</span><span>${s.id}</span></div>
+        <div><span>Class</span><span>${esc(s.cls)}</span></div>
+        <div><span>Father's Name</span><span>${esc(s.fatherName||'—')}</span></div>
+        <div><span>Mobile No.</span><span>${s.mobNo?esc(s.mobNo):'—'}</span></div>
+        <div><span>Month</span><span>${esc(month)}</span></div>
+      </div>
+      <table class="a5-table">
+        <tr><td>Monthly Fee</td><td>${fmt(s.monthlyFee)}</td></tr>
+        <tr class="payable"><td>${esc(month)} Payable</td><td>${fmt(due)}</td></tr>
+        <tr class="running"><td>Running Due (Upto ${esc(month).slice(0,3)})</td><td>${fmt(runningDue)}</td></tr>
+        <tr class="rest"><td>Full Session Rest Due</td><td>${fmt(rest)}</td></tr>
+        <tr class="lastpay"><td>Last Payment${lp?` (${esc(lp.month)} &middot; Receipt ${esc(lp.receiptNo||'—')})`:''}</td><td>${lp?`${fmt(lp.amount)} on ${fmtDate(lp.date)}`:'No payment yet'}</td></tr>
+      </table>
+      ${notice?`<div class="a5-notice">${esc(notice)}</div>`:''}
+      <div class="a5-foot">
+        <div class="a5-msg">बच्चे की पढ़ाई में रुकावट न आए — कृपया बकाया फीस समय पर जमा करें। धन्यवाद! 🙏</div>
+        <div class="a5-sign">
+          <div>Parent / Guardian Signature</div>
+          <div>${schoolSettings.principalSign ? `<img src="${schoolSettings.principalSign}" style="height:24px;"/><br/>`:''}Principal / Accounts Office</div>
+        </div>
+      </div>
+    </div>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { toast('Popup block ho gaya — popup allow karein'); return; }
+    win.document.write(`<!DOCTYPE html><html><head><title>Demand Bill — ${esc(s.name)}</title><style>${DEMAND_SLIP_A5_CSS}</style></head><body>${html}</body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(()=> win.print(), 300);
+  }
+
+  // ---------- Shared: printable notice line for Demand Bills (admin-configurable) ----------
+  function demandNoticeHtml(){
+    const note = (schoolSettings.demandBillNotice || '').trim();
+    if (!note) return '';
+    return `<div class="slip-notice">${esc(note)}</div>`;
+  }
+
+  // ---------- Select-Month Demand Bill Generator (choose any month, not just current) ----------
+  function selectMonthDemandModal(){
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="ekps-smd-bg">
+        <div class="modal" style="width:420px;">
+          <div class="modal-head"><h3>🗓️ Select Month Demand Bills</h3><div class="icon-btn" id="ekps-smd-close">✕</div></div>
+          <div class="modal-body">
+            <div class="hint" style="margin-bottom:12px;">Kisi bhi mahine ka Demand Bill nikalne ke liye month chunein — sirf un students ke liye slip banegi jinka us mahine ka fee due hai.</div>
+            <div class="field">
+              <label>Month</label>
+              <select id="smd-month">${MONTHS.map(m=>`<option value="${m}" ${m===currentMonthName()?'selected':''}>${m}</option>`).join('')}</select>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <span class="btn btn-ghost" id="ekps-smd-cancel">Cancel</span>
+            <span class="btn btn-accent" id="ekps-smd-generate">Generate PDF</span>
+          </div>
+        </div>
+      </div>`;
+    const close = ()=>{ modalRoot.innerHTML=''; };
+    document.getElementById('ekps-smd-close').addEventListener('click', close);
+    document.getElementById('ekps-smd-cancel').addEventListener('click', close);
+    document.getElementById('ekps-smd-bg').addEventListener('click', (e)=>{ if (e.target.id==='ekps-smd-bg') close(); });
+    document.getElementById('ekps-smd-generate').addEventListener('click', ()=>{
+      const month = document.getElementById('smd-month').value;
+      close();
+      downloadMonthWiseDemandPDF(month);
+    });
+  }
+
+  function downloadMonthWiseDemandPDF(month){
+    const list = students.filter(s => monthDueCascade(s, month) > 0)
+      .sort((a,b)=> CLASS_ORDER.indexOf(a.cls)-CLASS_ORDER.indexOf(b.cls) || a.id-b.id);
+    if (!list.length) { toast(`${month} mahine ka koi due nahi hai`); return; }
+
+    const classes = CLASS_ORDER.filter(c => list.some(s=>s.cls===c));
+    let sheetsHtml = '';
+    classes.forEach(cls=>{
+      const clsStudents = list.filter(s=>s.cls===cls);
+      const pages = chunkArr(clsStudents, 8);
+      pages.forEach((page, pi)=>{
+        const slips = page.map(s=>{
+          const due = monthDueCascade(s, month);
+          const buckets = studentDueBuckets(s, month);
+          const runningDue = buckets.current + buckets.b1_2 + buckets.b3_5 + buckets.b6plus + buckets.otherCharges;
+          const rest = totalDue(s) - totalPaid(s.id);
+          return `<div class="slip">
+            <div class="slip-head">${esc(schoolSettings.name)}</div>
+            <div class="slip-sub">Fee Demand &middot; ${esc(month)} &middot; ${fmtDate(todayISO())}</div>
+            <div class="slip-row"><span>Student</span><span>${esc(s.name)} (ID ${s.id})</span></div>
+            <div class="slip-row"><span>Class</span><span>${esc(s.cls)}</span></div>
+            <div class="slip-row"><span>Monthly Fee</span><span>${fmt(s.monthlyFee)}</span></div>
+            <div class="slip-row rest"><span>${esc(month)} Payable</span><span>${fmt(due)}</span></div>
+            <div class="slip-row running"><span>Running Due (Upto ${esc(month).slice(0,3)})</span><span>${fmt(runningDue)}</span></div>
+            <div class="slip-row rest2"><span>Full Session Rest Due</span><span>${fmt(rest)}</span></div>
+            <div class="slip-row lastpay"><span>Last Payment</span><span>${lastPaymentLineShort(s.id)}</span></div>
+            <div class="slip-foot">Kripya jald se jald fee jama karein &middot; Accounts Office</div>
+            ${demandNoticeHtml()}
+          </div>`;
+        }).join('');
+        sheetsHtml += `<div class="sheet">
+          <div class="sheet-title">Class: ${esc(cls)} &mdash; ${esc(month)} Demand &mdash; Page ${pi+1} of ${pages.length}</div>
+          <div class="grid">${slips}</div>
+        </div>`;
+      });
+    });
+
+    const win = window.open('', '_blank');
+    if (!win) { toast('Popup block ho gaya — popup allow karein'); return; }
+    win.document.write(`<!DOCTYPE html><html><head><title>Demand Bills — ${esc(month)}</title><style>${DEMAND_SLIP_CSS}</style></head><body>${sheetsHtml}</body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(()=> win.print(), 300);
+  }
+
+  // ---------- Demand Bill Notice Settings (message printed on every Demand Bill) ----------
+  function demandNoticeSettingsModal(){
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="ekps-dn-bg">
+        <div class="modal" style="width:520px;">
+          <div class="modal-head"><h3>🔔 Demand Bill Notice</h3><div class="icon-btn" id="ekps-dn-close">✕</div></div>
+          <div class="modal-body">
+            <div class="hint" style="margin-bottom:12px;">Ye message sabhi Demand Bills (Class-wise, Current Month, aur Select Month) ke print par neeche automatically dikhega, taaki guardian padh sakein. Samay anusar isse kabhi bhi badal sakte hain — ya khaali chhod kar hide kar sakte hain.</div>
+            <div class="field">
+              <label>Notice Message</label>
+              <textarea id="dn-text" rows="4" style="font-family:'Inter'; font-size:13.5px; padding:9px 11px; border-radius:8px; border:1px solid var(--border-strong); width:100%; resize:vertical;">${esc(schoolSettings.demandBillNotice || '')}</textarea>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <span class="btn btn-ghost" id="ekps-dn-cancel">Cancel</span>
+            <span class="btn btn-accent" id="ekps-dn-save">Save Notice</span>
+          </div>
+        </div>
+      </div>`;
+    const close = ()=>{ modalRoot.innerHTML=''; };
+    document.getElementById('ekps-dn-close').addEventListener('click', close);
+    document.getElementById('ekps-dn-cancel').addEventListener('click', close);
+    document.getElementById('ekps-dn-bg').addEventListener('click', (e)=>{ if (e.target.id==='ekps-dn-bg') close(); });
+    document.getElementById('ekps-dn-save').addEventListener('click', ()=>{
+      schoolSettings = { ...schoolSettings, demandBillNotice: document.getElementById('dn-text').value.trim() };
+      saveSchoolSettings();
+      toast('Demand Bill notice save ho gaya');
+      close();
+    });
   }
 
   // ---------- WhatsApp Bill Sending ----------
@@ -4579,11 +4799,16 @@
   // ---------- LEDGER ----------
   function renderLedger(){
     const classes = ['all', ...CLASS_ORDER.filter(c=>students.some(s=>s.cls===c))];
+    const villages = ['all', ...Array.from(new Set(students.map(s=>(s.address||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b))];
+
     let list = students.filter(s=>{
       if (ledgerFilters.cls!=='all' && s.cls!==ledgerFilters.cls) return false;
       const st = statusOf(s);
       if (ledgerFilters.status!=='all' && st!==ledgerFilters.status) return false;
       if (ledgerFilters.q && !s.name.toLowerCase().includes(ledgerFilters.q.toLowerCase()) && !String(s.id).includes(ledgerFilters.q)) return false;
+      if (ledgerFilters.village!=='all' && (s.address||'').trim()!==ledgerFilters.village) return false;
+      if (ledgerFilters.van==='none' && s.transportRouteId) return false;
+      if (ledgerFilters.van!=='all' && ledgerFilters.van!=='none' && s.transportRouteId!==parseInt(ledgerFilters.van)) return false;
       return true;
     }).sort((a,b)=> CLASS_ORDER.indexOf(a.cls)-CLASS_ORDER.indexOf(b.cls) || a.id-b.id);
 
@@ -4594,12 +4819,22 @@
         <select id="ekps-ledger-status">
           ${['all','Paid','Partial','Due'].map(s=>`<option value="${s}" ${s===ledgerFilters.status?'selected':''}>${s==='all'?'All Status':s}</option>`).join('')}
         </select>
+        <select id="ekps-ledger-village">
+          ${villages.map(v=>`<option value="${esc(v)}" ${v===ledgerFilters.village?'selected':''}>${v==='all'?'All Villages':esc(v)}</option>`).join('')}
+        </select>
+        <select id="ekps-ledger-van">
+          <option value="all" ${ledgerFilters.van==='all'?'selected':''}>All Vans/Routes</option>
+          <option value="none" ${ledgerFilters.van==='none'?'selected':''}>No Van Assigned</option>
+          ${transportRoutes.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(r=>`<option value="${r.id}" ${String(ledgerFilters.van)===String(r.id)?'selected':''}>${esc(r.name)}</option>`).join('')}
+        </select>
         <span style="flex:1"></span>
         <span class="btn btn-ghost" id="ekps-demand-pdf">🧾 Demand Bills PDF (Class-wise, A4)</span>
         <span class="btn btn-ghost" id="ekps-current-month-pdf">📅 Current Month (${currentMonthName()}) Demand Bills</span>
+        <span class="btn btn-ghost" id="ekps-select-month-pdf">🗓️ Select Month Demand Bills</span>
         <span class="btn btn-ghost" id="ekps-due-statement-pdf">📊 Multi-Level Due Statement</span>
         <span class="btn btn-ghost" id="ekps-current-month-excel">⬇ Current Month Due Bill (Excel)</span>
         <span class="btn btn-accent" id="ekps-export-excel">⬇ Export Excel (Month-wise)</span>
+        <span class="btn btn-ghost" id="ekps-demand-notice-settings" title="Demand Bill par print hone wala notice message set karein">🔔 Demand Bill Notice</span>
       </div>
       <div class="panel">
         <div class="panel-body" style="padding:0; overflow:auto;">
@@ -4619,7 +4854,7 @@
                   <td><span class="cls-chip">${esc(s.cls)}</span></td>
                   <td style="font-weight:600;">${esc(s.name)}</td>
                   <td class="mono">${fmt(due)}</td>
-                  <td class="mono" style="font-weight:700; color:${dueTillNow>0?'var(--rust)':'var(--green)'};">${fmt(dueTillNow)}</td>
+                  <td class="mono" data-single-demand="${s.id}" style="font-weight:700; color:${dueTillNow>0?'var(--rust)':'var(--green)'}; text-decoration:underline dotted; cursor:pointer;" title="Is student ka individual Demand Bill (A5) print/PDF karein">${fmt(dueTillNow)}</td>
                   <td class="mono">${fmt(paid)}</td>
                   <td class="mono">${fmt(rest)}</td>
                   <td><span class="status-badge status-${st}">${st}</span></td>
@@ -4627,6 +4862,7 @@
                     <span class="icon-btn" data-collect-fee="${s.id}" title="Fee Collection karein">${ICONS.collect}</span>
                     <span class="icon-btn" data-wa-send="${s.id}" title="Bill WhatsApp par bhejein">📲</span>
                     <span class="icon-btn" data-statement="${s.id}" title="Statement nikalein">🧾</span>
+                    <span class="icon-btn" data-single-demand="${s.id}" title="Is student ka Demand Bill (A5) print/PDF karein">🖨️</span>
                   </td>
                 </tr>
                 ${expanded?`<tr class="detail-row"><td colspan="10"><div class="month-grid">${months}</div></td></tr>`:''}
@@ -4637,14 +4873,24 @@
         </div>
       </div>`;
 
-    document.getElementById('ekps-ledger-search').addEventListener('input', e=>{ ledgerFilters.q = e.target.value; renderLedger(); });
+    document.getElementById('ekps-ledger-search').addEventListener('input', e=>{
+      ledgerFilters.q = e.target.value;
+      const pos = e.target.selectionStart;
+      renderLedger();
+      const el = document.getElementById('ekps-ledger-search');
+      if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch(err){} }
+    });
     document.getElementById('ekps-ledger-cls').addEventListener('change', e=>{ ledgerFilters.cls = e.target.value; renderLedger(); });
     document.getElementById('ekps-ledger-status').addEventListener('change', e=>{ ledgerFilters.status = e.target.value; renderLedger(); });
+    document.getElementById('ekps-ledger-village').addEventListener('change', e=>{ ledgerFilters.village = e.target.value; renderLedger(); });
+    document.getElementById('ekps-ledger-van').addEventListener('change', e=>{ ledgerFilters.van = e.target.value; renderLedger(); });
     document.getElementById('ekps-export-excel').addEventListener('click', exportExcel);
     document.getElementById('ekps-current-month-excel').addEventListener('click', exportCurrentMonthDueExcel);
     document.getElementById('ekps-demand-pdf').addEventListener('click', downloadDemandBillsPDF);
     document.getElementById('ekps-current-month-pdf').addEventListener('click', downloadCurrentMonthDemandPDF);
+    document.getElementById('ekps-select-month-pdf').addEventListener('click', selectMonthDemandModal);
     document.getElementById('ekps-due-statement-pdf').addEventListener('click', downloadDueStatementPDF);
+    document.getElementById('ekps-demand-notice-settings').addEventListener('click', demandNoticeSettingsModal);
     contentEl.querySelectorAll('[data-toggle]').forEach(el=> el.addEventListener('click', ()=>{
       const id = parseInt(el.dataset.toggle);
       ledgerExpanded[id] = !ledgerExpanded[id];
@@ -4663,6 +4909,10 @@
     contentEl.querySelectorAll('[data-statement]').forEach(el=> el.addEventListener('click', (e)=>{
       e.stopPropagation();
       printStudentStatement(parseInt(el.dataset.statement));
+    }));
+    contentEl.querySelectorAll('[data-single-demand]').forEach(el=> el.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      downloadSingleCurrentMonthDemandA5(parseInt(el.dataset.singleDemand));
     }));
   }
 
