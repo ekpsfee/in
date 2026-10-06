@@ -754,7 +754,7 @@
   function fmtDate(iso){ if(!iso) return '—'; const d = new Date(iso+'T00:00:00'); if(isNaN(d)) return iso;
     return d.toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}); }
 
-  const BILL_TYPES = ['Uniform','Books / Copy','Van / Transport','Annual Charge','Exam Fee','Late Fee','Activity / Picnic','Stationery / Inventory','Other'];
+  const BILL_TYPES = ['Uniform','Books / Copy','Van / Transport','Annual Charge','Exam Fee','Late Fee','Activity / Picnic','Stationery / Inventory','Miscellaneous Fee','Other'];
   function billsTotal(s){ return Array.isArray(s.bills) ? s.bills.reduce((a,b)=>a+(parseFloat(b.amount)||0),0) : 0; }
   // Months for which tuition fee actually applies for this student — from their chosen
   // "Fee Start Month" (e.g. student admitted in September only owes Sept–March) through March.
@@ -789,6 +789,8 @@
     if (paid <= 0) return 'Due';
     return 'Partial';
   }
+  // Tolerant lookup: works whether student ids are numbers or strings (e.g. after restore/import)
+  function findStudentById(id){ return students.find(x=>String(x.id)===String(id)); }
   function nextStudentId(){ return students.length ? Math.max(...students.map(s=>s.id))+1 : 1; }
   function nextReceiptNo(){ const n = entries.length+1; return 'EK-' + String(n).padStart(4,'0'); }
   function nextClassOf(cls){
@@ -1772,6 +1774,7 @@
                   <div class="icon-btn" data-wa-payment="${e.id}" title="Payment confirmation WhatsApp par bhejein">📲</div>
                   <div class="icon-btn" data-print-receipt="${e.id}" title="Payment Receipt print karein">${ICONS.print}</div>
                   <div class="icon-btn" data-print-statement="${e.studentId}" title="Fee Statement print karein">🧾</div>
+                  ${isAdmin() ? `<div class="icon-btn" data-edit-entry="${e.id}" title="Entry edit karein (galat entry sahi karein)">✏️</div>` : ''}
                   ${isAdmin() ? `<div class="icon-btn js-del-btn" data-del-entry="${e.id}" title="Delete">${ICONS.trash}</div>` : ''}
                 </div>
               </div>`;
@@ -1785,7 +1788,7 @@
     const preview = document.getElementById('ekps-pick-preview');
 
     if (collectPrefillId != null) {
-      const ps = students.find(x=>x.id===collectPrefillId);
+      const ps = findStudentById(collectPrefillId);
       if (ps) {
         pickedId = ps.id;
         input.value = `${ps.id} — ${ps.name} (${ps.cls})`;
@@ -1845,6 +1848,10 @@
       el.addEventListener('click', ()=> printStudentStatement(parseInt(el.dataset.printStatement)));
     });
 
+    contentEl.querySelectorAll('[data-edit-entry]').forEach(el=>{
+      el.addEventListener('click', ()=> editFeeEntryModal(parseInt(el.dataset.editEntry), renderCollect));
+    });
+
     contentEl.querySelectorAll('[data-del-entry]').forEach(el=>{
       el.addEventListener('click', ()=>{
         if(!isAdmin()){ toast('Access Denied: Entry delete karne ki permission sirf Admin ko hai'); return; }
@@ -1859,6 +1866,70 @@
 
   // ---------- STUDENTS ----------
 // ---------- STUDENTS ----------
+  // ---------- Edit a wrongly-entered fee payment (Admin only) ----------
+  // Student, Month, Amount aur Date badal sakte hain. Receipt No. wahi rehta hai.
+  function editFeeEntryModal(entryId, onDone){
+    if (!isAdmin()) { toast('Access Denied: Entry edit karne ki permission sirf Admin ko hai'); return; }
+    const e = entries.find(x=>x.id===entryId);
+    if (!e) { toast('Entry nahi mili'); return; }
+    const stLabel = (s)=> `${s.id} — ${s.name} (${s.cls})`;
+    const cur = findStudentById(e.studentId);
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="ekps-ee-bg">
+        <div class="modal" style="width:440px;">
+          <div class="modal-head"><h3>✏️ Edit Fee Entry — ${esc(e.receiptNo||('#'+e.id))}</h3><div class="icon-btn" id="ekps-ee-close">✕</div></div>
+          <div class="modal-body">
+            <div class="hint" style="margin-bottom:12px;">Galat entry ko yahin sahi karein. Receipt No. nahi badlega; Ledger aur Statement turant update ho jayenge.</div>
+            <div class="field">
+              <label>Student</label>
+              <input type="text" id="ee-student" list="ekps-ee-list" value="${cur?esc(stLabel(cur)):''}" autocomplete="off"/>
+              <datalist id="ekps-ee-list">${students.map(s=>`<option value="${esc(stLabel(s))}">`).join('')}</datalist>
+            </div>
+            <div class="form-grid">
+              <div class="field">
+                <label>Month</label>
+                <select id="ee-month">${MONTHS.map(m=>`<option value="${m}" ${m===e.month?'selected':''}>${m}</option>`).join('')}</select>
+              </div>
+              <div class="field">
+                <label>Paid Amount (₹)</label>
+                <input type="number" id="ee-amount" min="1" value="${e.amount}"/>
+              </div>
+              <div class="field">
+                <label>Payment Date</label>
+                <input type="date" id="ee-date" value="${esc(e.date||todayISO())}"/>
+              </div>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <span class="btn btn-ghost" id="ekps-ee-cancel">Cancel</span>
+            <span class="btn btn-accent" id="ekps-ee-save">Save Changes</span>
+          </div>
+        </div>
+      </div>`;
+    const close = ()=>{ modalRoot.innerHTML=''; };
+    document.getElementById('ekps-ee-close').addEventListener('click', close);
+    document.getElementById('ekps-ee-cancel').addEventListener('click', close);
+    document.getElementById('ekps-ee-bg').addEventListener('click', ev=>{ if (ev.target.id==='ekps-ee-bg') close(); });
+    document.getElementById('ekps-ee-save').addEventListener('click', ()=>{
+      const val = document.getElementById('ee-student').value.trim();
+      const s = students.find(x=>stLabel(x)===val) || students.find(x=>String(x.id)===val.split('—')[0].trim());
+      const month = document.getElementById('ee-month').value;
+      const amount = parseFloat(document.getElementById('ee-amount').value);
+      const date = document.getElementById('ee-date').value;
+      if (!s) { toast('Valid Student select karein'); return; }
+      if (!month) { toast('Month select karein'); return; }
+      if (!amount || amount<=0) { toast('Sahi Paid Amount daalein'); return; }
+      if (!date) { toast('Payment Date daalein'); return; }
+      const before = `${e.studentId}/${e.month}/${e.amount}/${e.date}`;
+      e.studentId = s.id; e.month = month; e.amount = amount; e.date = date;
+      saveEntries();
+      try { logAuditLocal('Edit Fee Entry', `${e.receiptNo}: ${before} -> ${s.id}/${month}/${amount}/${date}`); } catch(err){}
+      close();
+      toast('Entry update ho gayi — Ledger updated');
+      if (typeof onDone === 'function') onDone();
+    });
+  }
+
   function studentModal(){
     const editing = editingStudentId != null;
     const s = editing ? students.find(x=>x.id===editingStudentId) : {id:nextStudentId(), cls:CLASS_ORDER[0], name:'', fatherName:'', address:'', mobNo:'', photo:'', monthlyFee:0, examFee:0, oldDue:0, uniformBill:0, bookBill:0, otherBill:0, bills:[], feeStartMonth:'April'};
@@ -2059,18 +2130,27 @@
   // ---------- BULK BILL (Class-wise, add same bill to many students at once) ----------
   let bulkBillClass = 'all';
   let bulkBillSelected = {};
+  let bulkBillType = BILL_TYPES[0];
 
   function bulkBillModal(){
     bulkBillClass = 'all';
     bulkBillSelected = {};
+    bulkBillType = BILL_TYPES[0];
     students.forEach(s=>{ bulkBillSelected[s.id] = true; });
     drawBulkBillModal();
   }
 
   function drawBulkBillModal(){
     const classes = ['all', ...CLASS_ORDER.filter(c=>students.some(s=>s.cls===c))];
-    const list = students.filter(s=> bulkBillClass==='all' || s.cls===bulkBillClass)
+    const isMisc = bulkBillType === 'Miscellaneous Fee';
+    let list = students.filter(s=> bulkBillClass==='all' || s.cls===bulkBillClass)
       .sort((a,b)=> CLASS_ORDER.indexOf(a.cls)-CLASS_ORDER.indexOf(b.cls) || a.id-b.id);
+    const classFilteredCount = list.length;
+    if (isMisc){
+      // Miscellaneous Fee sirf un students ko diya jaata hai jinka Full Season Rest Due amount zero nahi hai
+      list = list.filter(s => (totalDue(s) - totalPaid(s.id)) !== 0);
+    }
+    const excludedForFullyPaid = classFilteredCount - list.length;
     const selCount = list.filter(s=>bulkBillSelected[s.id]).length;
     const allChecked = list.length>0 && list.every(s=>bulkBillSelected[s.id]);
 
@@ -2084,7 +2164,7 @@
               <div class="field" style="grid-column: span 2;">
                 <label>Bill Type</label>
                 <select id="bb-type">
-                  ${BILL_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}
+                  ${BILL_TYPES.map(t=>`<option value="${t}" ${t===bulkBillType?'selected':''}>${t}</option>`).join('')}
                 </select>
               </div>
               <div class="field" style="grid-column: span 2;" id="bb-custom-wrap">
@@ -2099,6 +2179,7 @@
               <label>Class</label>
               <select id="bb-cls">${classes.map(c=>`<option value="${c}" ${c===bulkBillClass?'selected':''}>${c==='all'?'All Classes':c}</option>`).join('')}</select>
             </div>
+            ${isMisc ? `<div class="hint" style="margin:8px 0; color:var(--rust);">ℹ️ Miscellaneous Fee sirf un students ko add hoga jinka Full Session Rest Due amount zero nahi hai (poori fee jama nahi hui hai). ${excludedForFullyPaid>0 ? `${excludedForFullyPaid} student(s) jinka Rest Due zero hai, list se hata diye gaye hain.` : ''}</div>` : ''}
             <div class="promo-selectall" style="display:flex; align-items:center; gap:8px; margin:10px 0 6px 0;">
               <input type="checkbox" id="bb-select-all" ${allChecked?'checked':''}/>
               <span>Sabhi Select Karein (${selCount}/${list.length} selected)</span>
@@ -2110,7 +2191,7 @@
                   <span class="id-chip">${s.id}</span>
                   <span class="cls-chip">${esc(s.cls)}</span>
                   <span class="cr-name">${esc(s.name)}</span>
-                </div>`).join('') : `<div class="empty-state">Is class me koi student nahi hai</div>`}
+                </div>`).join('') : `<div class="empty-state">${isMisc ? 'Is class me koi student nahi hai jiska Rest Due zero na ho' : 'Is class me koi student nahi hai'}</div>`}
             </div>
           </div>
           <div class="modal-foot">
@@ -2128,7 +2209,10 @@
     const typeSel = document.getElementById('bb-type');
     const customWrap = document.getElementById('bb-custom-wrap');
     const syncCustom = ()=>{ customWrap.style.display = typeSel.value==='Other' ? '' : 'none'; };
-    typeSel.addEventListener('change', syncCustom);
+    typeSel.addEventListener('change', ()=>{
+      bulkBillType = typeSel.value;
+      drawBulkBillModal();
+    });
     syncCustom();
 
     document.getElementById('bb-cls').addEventListener('change', (e)=>{
@@ -4258,6 +4342,14 @@
     .a5-table tr.running td { font-weight:800; font-size:12px; color:#C1502E; }
     .a5-table tr.rest td { font-weight:800; font-size:12px; background:#EAF7EF; color:#2F8F5B; }
     .a5-table tr.lastpay td { font-size:10px; color:#555; font-weight:600; background:#F5F6FA; }
+    .a5-oc-title { font-size:11px; font-weight:800; margin:2px 0 4px; }
+    .a5-oc-title span { font-weight:400; font-size:9px; color:#666; }
+    .a5-oc { width:100%; border-collapse:collapse; font-size:10.5px; margin-bottom:10px; }
+    .a5-oc th, .a5-oc td { padding:3px 6px; border:1px solid #ccd; }
+    .a5-oc th { background:#F0EEE5; text-align:left; font-size:10px; }
+    .a5-oc td.r, .a5-oc th.r { text-align:right; }
+    .a5-oc td.r { font-weight:700; }
+    .a5-oc tr.tot td { font-weight:800; background:#FFF3EC; }
     .a5-notice { font-size:9.5px; color:#9A4A1F; font-weight:700; line-height:1.35; border-top:1px dashed #c99; padding-top:6px; margin-bottom:10px; }
     .a5-foot { margin-top:auto; }
     .a5-msg { font-size:10.5px; color:#444; text-align:center; margin-bottom:14px; }
@@ -4277,6 +4369,23 @@
     const rest = totalDue(s) - totalPaid(s.id);
     const notice = (schoolSettings.demandBillNotice || '').trim();
     const lp = lastPaymentOf(s.id);
+    // Other Charges: sirf wahi items jinka paisa abhi baki hai. Payment sabse pehle Old Due / Other Charges
+    // me adjust hoti hai (Statement jaisa hi), isliye jo poora paid ho chuka wo bill me nahi aayega.
+    const alloc = monthlyAllocation(s);
+    const ocRows = otherChargeItems(s).map(it=>{
+      const paidAmt = alloc.otherChargesPaidByItem[it.key] || 0;
+      return { label: it.label, amount: it.amount, paid: paidAmt, due: Math.max(0, it.amount - paidAmt) };
+    }).filter(r=> r.amount > 0 && r.due > 0);
+    const ocTotal = ocRows.reduce((a,r)=>a+r.due, 0);
+    const ocHtml = ocRows.length ? `
+      <div class="a5-oc-title">Other Charges (Baki) <span>— upar Running Due me shamil</span></div>
+      <table class="a5-oc">
+        <thead><tr><th>Particulars</th><th class="r">Amount</th><th class="r">Paid</th><th class="r">Due</th></tr></thead>
+        <tbody>
+          ${ocRows.map(r=>`<tr><td>${esc(r.label)}</td><td class="r">${fmt(r.amount)}</td><td class="r">${r.paid?fmt(r.paid):'—'}</td><td class="r">${fmt(r.due)}</td></tr>`).join('')}
+          <tr class="tot"><td colspan="3">Total Other Charges Due</td><td class="r">${fmt(ocTotal)}</td></tr>
+        </tbody>
+      </table>` : '';
     return `<div class="a5-wrap">
       <div class="a5-head">
         <div class="a5-school">${esc(schoolSettings.name)}</div>
@@ -4302,6 +4411,7 @@
         <tr class="rest"><td>Full Session Rest Due</td><td>${fmt(rest)}</td></tr>
         <tr class="lastpay"><td>Last Payment${lp?` (${esc(lp.month)} &middot; Receipt ${esc(lp.receiptNo||'—')})`:''}</td><td>${lp?`${fmt(lp.amount)} on ${fmtDate(lp.date)}`:'No payment yet'}</td></tr>
       </table>
+      ${ocHtml}
       ${notice?`<div class="a5-notice">${esc(notice)}</div>`:''}
       <div class="a5-foot">
         <div class="a5-msg">बच्चे की पढ़ाई में रुकावट न आए — कृपया बकाया फीस समय पर जमा करें। धन्यवाद! 🙏</div>
@@ -4314,7 +4424,7 @@
   }
 
   function downloadSingleCurrentMonthDemandA5(studentId, month){
-    const s = students.find(x=>x.id===studentId);
+    const s = findStudentById(studentId);
     if (!s) { toast('Student nahi mila'); return; }
     month = month || currentMonthName();
     const html = `<div class="a5-page">${buildA5BillHtml(s, month)}</div>`;
@@ -4381,7 +4491,7 @@
   // Small month-picker modal shown before generating an individual A5 Demand Bill,
   // so any month (not just the current one) can be printed for a single student.
   function singleDemandMonthModal(studentId){
-    const s = students.find(x=>x.id===studentId);
+    const s = findStudentById(studentId);
     if (!s) { toast('Student nahi mila'); return; }
     const applicable = applicableMonths(s);
     const monthOptions = MONTHS.filter(m=> applicable.includes(m));
@@ -4526,6 +4636,37 @@
     });
   }
 
+  // ---------- WhatsApp Custom Message Settings (appended below every Bill/Receipt sent on WhatsApp) ----------
+  function waCustomMessageSettingsModal(){
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="ekps-wan-bg">
+        <div class="modal" style="width:520px;">
+          <div class="modal-head"><h3>💬 WhatsApp Custom Message</h3><div class="icon-btn" id="ekps-wan-close">✕</div></div>
+          <div class="modal-body">
+            <div class="hint" style="margin-bottom:12px;">Ye message save karne ke baad, jab bhi koi Bill ya Payment Receipt WhatsApp par bheja jayega, uske sabse niche automatically ye message add ho jayega. Samay anusar isse kabhi bhi badal sakte hain — ya khaali chhod kar hide kar sakte hain.</div>
+            <div class="field">
+              <label>Custom Message</label>
+              <textarea id="wan-text" rows="4" style="font-family:'Inter'; font-size:13.5px; padding:9px 11px; border-radius:8px; border:1px solid var(--border-strong); width:100%; resize:vertical;">${esc(schoolSettings.waCustomMessage || '')}</textarea>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <span class="btn btn-ghost" id="ekps-wan-cancel">Cancel</span>
+            <span class="btn btn-accent" id="ekps-wan-save">Save Message</span>
+          </div>
+        </div>
+      </div>`;
+    const close = ()=>{ modalRoot.innerHTML=''; };
+    document.getElementById('ekps-wan-close').addEventListener('click', close);
+    document.getElementById('ekps-wan-cancel').addEventListener('click', close);
+    document.getElementById('ekps-wan-bg').addEventListener('click', (e)=>{ if (e.target.id==='ekps-wan-bg') close(); });
+    document.getElementById('ekps-wan-save').addEventListener('click', ()=>{
+      schoolSettings = { ...schoolSettings, waCustomMessage: document.getElementById('wan-text').value.trim() };
+      saveSchoolSettings();
+      toast('WhatsApp custom message save ho gaya');
+      close();
+    });
+  }
+
   // ---------- WhatsApp Bill Sending ----------
   function waPhone(mobNo){
     let digits = (mobNo||'').replace(/\D/g,'');
@@ -4535,7 +4676,7 @@
   }
 
   function sendBillWhatsApp(studentId){
-    const s = students.find(x=>x.id===studentId);
+    const s = findStudentById(studentId);
     if (!s) { toast('Student nahi mila'); return; }
     const phone = waPhone(s.mobNo);
     if (!phone) { toast('Is student ka mobile number ledger me nahi hai'); return; }
@@ -4559,6 +4700,7 @@
       rest > 0 ? '"बच्चों की मुस्कान और उनकी शिक्षा ही हमारी सबसे बड़ी पूँजी है। स्कूल व्यवस्था को बेहतर बनाए रखने के लिए, कृपया बकाया फीस जल्द जमा करें। धन्यवाद!' : 'Aapki fee poori tarah se jama ho chuki hai. Dhanyavaad!',
       '— Accounts Office'
     ];
+    if (schoolSettings.waCustomMessage) { lines.push(''); lines.push(schoolSettings.waCustomMessage); }
     const text = encodeURIComponent(lines.join('\n'));
     window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
   }
@@ -4589,13 +4731,14 @@
       '"शिक्षा ही उज्ज्वल भविष्य का आधार है। Payment की सफलतापूर्वक प्राप्ति के लिए धन्यवाद! 🙏"',
       '— Accounts Office'
     ];
+    if (schoolSettings.waCustomMessage) { lines.push(''); lines.push(schoolSettings.waCustomMessage); }
     const text = encodeURIComponent(lines.join('\n'));
     window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
   }
 
   // ---------- Student-wise Full Statement ----------
   function printStudentStatement(studentId){
-    const s = students.find(x=>x.id===studentId);
+    const s = findStudentById(studentId);
     if (!s) { toast('Student nahi mila'); return; }
     const due = totalDue(s), paid = totalPaid(s.id), rest = due - paid;
 
@@ -4854,6 +4997,7 @@
         <span class="btn btn-ghost" id="ekps-current-month-excel">⬇ Current Month Due Bill (Excel)</span>
         <span class="btn btn-accent" id="ekps-export-excel">⬇ Export Excel (Month-wise)</span>
         <span class="btn btn-ghost" id="ekps-demand-notice-settings" title="Demand Bill par print hone wala notice message set karein">🔔 Demand Bill Notice</span>
+        <span class="btn btn-ghost" id="ekps-wa-notice-settings" title="Bill/Receipt WhatsApp par bhejte waqt niche jo custom message jaayega, wo set karein">💬 WhatsApp Custom Message</span>
       </div>
       <div class="panel">
         <div class="panel-body" style="padding:0; overflow:auto;">
@@ -4910,28 +5054,29 @@
     document.getElementById('ekps-select-month-pdf').addEventListener('click', selectMonthDemandModal);
     document.getElementById('ekps-classwise-month-a5').addEventListener('click', classWiseMonthDemandA5Modal);
     document.getElementById('ekps-demand-notice-settings').addEventListener('click', demandNoticeSettingsModal);
+    document.getElementById('ekps-wa-notice-settings').addEventListener('click', waCustomMessageSettingsModal);
     contentEl.querySelectorAll('[data-toggle]').forEach(el=> el.addEventListener('click', ()=>{
-      const id = parseInt(el.dataset.toggle);
+      const id = el.dataset.toggle;
       ledgerExpanded[id] = !ledgerExpanded[id];
       renderLedger();
     }));
     contentEl.querySelectorAll('[data-collect-fee]').forEach(el=> el.addEventListener('click', (e)=>{
       e.stopPropagation();
-      collectPrefillId = parseInt(el.dataset.collectFee);
+      collectPrefillId = el.dataset.collectFee;
       route = 'collect';
       render();
     }));
     contentEl.querySelectorAll('[data-wa-send]').forEach(el=> el.addEventListener('click', (e)=>{
       e.stopPropagation();
-      sendBillWhatsApp(parseInt(el.dataset.waSend));
+      sendBillWhatsApp(el.dataset.waSend);
     }));
     contentEl.querySelectorAll('[data-statement]').forEach(el=> el.addEventListener('click', (e)=>{
       e.stopPropagation();
-      printStudentStatement(parseInt(el.dataset.statement));
+      printStudentStatement(el.dataset.statement);
     }));
     contentEl.querySelectorAll('[data-single-demand]').forEach(el=> el.addEventListener('click', (e)=>{
       e.stopPropagation();
-      singleDemandMonthModal(parseInt(el.dataset.singleDemand));
+      singleDemandMonthModal(el.dataset.singleDemand);
     }));
   }
 
@@ -5021,6 +5166,7 @@
           </select>
         </div>
         <span class="btn btn-primary" id="ekps-print-btn" ${sel?'':'disabled'}>${ICONS.print} Print Receipt (Half A4)</span>
+        ${isAdmin() && sel ? `<span class="btn btn-ghost" id="ekps-edit-receipt-entry" title="Is receipt ki galat entry sahi karein">✏️ Edit Entry</span>` : ''}
       </div>
       <div class="receipt-wrap">
         ${sel && s ? `
@@ -5050,6 +5196,8 @@
     if (sel1) sel1.addEventListener('change', e=>{ receiptSelectedId = parseInt(e.target.value); renderReceipts(); });
     const pbtn = document.getElementById('ekps-print-btn');
     if (pbtn) pbtn.addEventListener('click', ()=> window.print());
+    const ebtn = document.getElementById('ekps-edit-receipt-entry');
+    if (ebtn) ebtn.addEventListener('click', ()=> editFeeEntryModal(receiptSelectedId, renderReceipts));
   }
 
   // ================== MODULE 3: Pre-Restore Validation Modal ==================
