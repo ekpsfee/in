@@ -279,7 +279,14 @@
   #ekps-root .act-btn.qr { background:#EEF0FF; border-color:#C5CAF5; color:#3B3FB8; }
   #ekps-root .act-btn.stmt { background:#FFF7E6; border-color:#F0D9A6; color:#8A5A00; }
   #ekps-root .act-btn.bill { background:#F3F1EA; }
+  #ekps-root .act-btn.phone { background:#FFF1EF; border-color:#F2B8B0; color:#B3261E; }
   #ekps-root .act-btn.wide { grid-column: 1 / -1; }
+  #ekps-root .icon-btn.lg { width:36px; height:36px; font-size:17px; border-radius:9px; }
+  #ekps-root .icon-btn.lg svg { width:16px; height:16px; }
+  #ekps-root .recent-tools { display:flex; gap:8px; align-items:center; }
+  #ekps-root .recent-tools input { padding:6px 10px; border:1px solid var(--border-strong); border-radius:8px; font-size:13px; width:170px; }
+  #ekps-root .recent-more { text-align:center; padding:10px 0 2px; }
+  #ekps-root .qr-card-img { width:100%; max-width:300px; border:1px solid var(--border-strong); border-radius:10px; background:#fff; }
   #ekps-root .qr-box { text-align:center; margin:6px 0 12px; }
   #ekps-root .qr-box img { width:240px; height:240px; border:1px solid var(--border-strong); border-radius:10px; background:#fff; padding:8px; }
   #ekps-root .qr-amt { font-size:26px; font-weight:800; margin:6px 0 2px; }
@@ -549,6 +556,69 @@
 </style>
 </head>
 <body>
+<script>
+/* ---- UPI Pay Page: parent ko WhatsApp par jo link jaata hai (?pay=1&...) wo yahan khulta hai ----
+   Ye app/login nahi kholta; sirf amount ke saath UPI app kholne wala chhota page dikhata hai. */
+(function(){
+  var q; try { q = new URLSearchParams(location.search); } catch(e){ return; }
+  if (q.get('pay') !== '1') return;
+  window.__EKPS_PAY_MODE = true;
+  var pa = (q.get('pa')||'').trim(), am = parseFloat(q.get('am')||'0');
+  var n = q.get('n')||'', sid = q.get('i')||'', cls = q.get('c')||'', mon = q.get('m')||'', sn = q.get('sn')||'School Fee';
+  var ok = /^[A-Za-z0-9._\-]+@[A-Za-z0-9.\-]+$/.test(pa) && am > 0 && am < 1000000;
+  var d = document;
+  var st = d.createElement('style');
+  st.textContent = '#ekps-root,#ekps-modal-root{display:none!important}'
+   + 'html,body{margin:0;background:#F3F1EA}'
+   + '#ekps-pay{position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;overflow:auto;background:#F3F1EA;color:#1F2A44;font-family:Arial,Helvetica,sans-serif}'
+   + '#ekps-pay .w{max-width:420px;margin:0 auto;padding:16px}'
+   + '#ekps-pay .c{background:#fff;border-radius:16px;box-shadow:0 2px 14px rgba(0,0,0,.1);overflow:hidden}'
+   + '#ekps-pay .h{background:#1F2A44;color:#fff;padding:18px 16px;text-align:center}#ekps-pay .h b{font-size:19px;display:block}#ekps-pay .h span{font-size:13px;opacity:.85}'
+   + '#ekps-pay .b{padding:18px 16px;text-align:center}#ekps-pay .nm{font-size:20px;font-weight:700}#ekps-pay .mt{color:#666;font-size:14px;margin-top:4px}'
+   + '#ekps-pay .am{font-size:44px;font-weight:800;color:#B3261E;margin:14px 0 4px}#ekps-pay .u{font-size:14px;color:#444;margin-bottom:16px}'
+   + '#ekps-pay .btn{display:block;text-decoration:none;border-radius:12px;padding:15px 12px;font-size:17px;font-weight:700;margin:10px 0;border:0;width:100%;box-sizing:border-box;cursor:pointer;font-family:inherit}'
+   + '#ekps-pay .p{background:#2E7D32;color:#fff}#ekps-pay .o{background:#fff;color:#1F2A44;border:2px solid #cfd3dc;font-size:15px;padding:12px}'
+   + '#ekps-pay .g{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}#ekps-pay .g .o{margin:0;font-size:13px;padding:11px 4px}'
+   + '#ekps-pay .s{font-size:12.5px;color:#777;margin-top:14px;line-height:1.5}';
+  (d.head || d.documentElement).appendChild(st);
+  try { var mv = d.createElement('meta'); mv.name = 'viewport'; mv.content = 'width=device-width,initial-scale=1'; (d.head || d.documentElement).appendChild(mv); } catch(e){}
+  try { d.title = 'Fee Payment'; } catch(e){}
+  function el(tag, c2, txt){ var e = d.createElement(tag); if (c2) e.className = c2; if (txt != null) e.textContent = txt; return e; }
+  var root = el('div'); root.id = 'ekps-pay';
+  var wrap = el('div','w'), card = el('div','c'), head = el('div','h'), bd = el('div','b');
+  head.appendChild(el('b', '', sn)); head.appendChild(el('span', '', 'Fee Payment'));
+  card.appendChild(head); card.appendChild(bd); wrap.appendChild(card); root.appendChild(wrap);
+  (d.body || d.documentElement).appendChild(root);
+  if (!ok) { bd.appendChild(el('div','nm','Payment link sahi nahi hai')); bd.appendChild(el('div','s','Kripya school office se naya link mangwayein.')); }
+  else {
+    var amt = am % 1 === 0 ? String(am) : am.toFixed(2);
+    var note = 'Fee ' + n + ' (ID ' + sid + ') ' + mon;
+    var qs = 'pa=' + encodeURIComponent(pa) + '&pn=' + encodeURIComponent(sn) + '&am=' + encodeURIComponent(Number(am).toFixed(2)) + '&cu=INR&tn=' + encodeURIComponent(note);
+    bd.appendChild(el('div','nm', n));
+    bd.appendChild(el('div','mt', 'ID: ' + sid + (cls ? '  |  Class: ' + cls : '') + (mon ? '  |  ' + mon : '')));
+    bd.appendChild(el('div','am', '\u20B9 ' + Number(am).toLocaleString('en-IN')));
+    bd.appendChild(el('div','u', 'UPI ID: ' + pa));
+    var main = el('a','btn p','\uD83D\uDCB3 UPI App se Pay Karein'); main.href = 'upi://pay?' + qs; bd.appendChild(main);
+    bd.appendChild(el('div','mt','Ya apni pasand ki app chunein:'));
+    var grid = el('div','g');
+    [['PhonePe','phonepe://pay?'],['Google Pay','tez://upi/pay?'],['Paytm','paytmmp://pay?']].forEach(function(a){
+      var x = el('a','btn o',a[0]); x.href = a[1] + qs; grid.appendChild(x);
+    });
+    bd.appendChild(grid);
+    var cp = el('button','btn o','\uD83D\uDCCB UPI ID Copy Karein'); cp.type = 'button';
+    cp.addEventListener('click', function(){
+      var done = function(){ cp.textContent = '\u2705 Copy ho gaya'; };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(pa).then(done, function(){ prompt('UPI ID copy karein:', pa); });
+      else prompt('UPI ID copy karein:', pa);
+    });
+    bd.appendChild(cp);
+    bd.appendChild(el('div','s','Button dabane par aapki UPI app khulegi aur \u20B9' + amt + ' ka amount pehle se bhara hoga. Payment ke baad screenshot school ke WhatsApp number par bhej dein.'));
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '')) { setTimeout(function(){ location.href = main.href; }, 700); }
+  }
+  // Baaki app load/run na ho (fast page + login screen na dikhe)
+  try { window.stop(); } catch(e){}
+})();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 
@@ -594,6 +664,7 @@
 </div>
 
 <script>
+if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped'); }
 (function(){
   const MONTHS = ['April','May','June','July','August','September','October','November','December','January','February','March'];
   const CLASS_ORDER = ['P.NC','N.C','L.K.G','U.K.G','1st','2nd','3rd','4th','5th','6th','7th','8th'];
@@ -1700,6 +1771,53 @@
     render(); 
   }
 
+  // ---------- Recent Collections (shared by Dashboard + Fee Collection) ----------
+  // Sorting: jo entry sabse baad me ki gayi wo sabse upar (payment date kuch bhi ho).
+  const recentState = { dash: 8, collect: 8, q: '' };
+  function recentEntriesList(q){
+    let list = entries.slice().sort((a,b)=> (Number(b.id)||0) - (Number(a.id)||0));
+    q = (q||'').trim().toLowerCase();
+    if (q) {
+      list = list.filter(e=>{
+        const s = findStudentById(e.studentId);
+        return [s?s.name:'', String(e.studentId), s?s.cls:'', e.receiptNo||'', e.month||'', fmtDate(e.date)].join(' ').toLowerCase().includes(q);
+      });
+    }
+    return list;
+  }
+  function recentRowHTML(e){
+    const s = findStudentById(e.studentId);
+    return `<div class="recent-row" data-created-by="${e.createdBy||'admin'}">
+      <div>
+        <div class="recent-name">${esc(s?s.name:'Unknown Student')} <span class="id-chip">${esc(e.receiptNo||'')}</span> ${e.createdBy==='user'?'<span class="entry-badge-user">Staff Entry</span>':''}</div>
+        <div class="recent-meta">ID ${esc(String(e.studentId))}${s?' &middot; Class '+esc(s.cls):''} &middot; ${esc(e.month)} &middot; ${fmtDate(e.date)}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+        <div class="recent-amt">+${fmt(e.amount)}</div>
+        <div class="icon-btn lg" data-wa-payment="${e.id}" title="Payment confirmation WhatsApp par bhejein">📲</div>
+        <div class="icon-btn lg" data-print-receipt="${e.id}" title="Payment Receipt print karein">${ICONS.print}</div>
+        <div class="icon-btn lg" data-print-statement="${e.studentId}" title="Fee Statement print karein">🧾</div>
+        ${isAdmin() ? `<div class="icon-btn lg" data-edit-entry="${e.id}" title="Entry edit karein (galat entry sahi karein)">✏️</div>` : ''}
+        ${isAdmin() ? `<div class="icon-btn lg js-del-btn" data-del-entry="${e.id}" title="Delete">${ICONS.trash}</div>` : ''}
+      </div>
+    </div>`;
+  }
+  function bindRecentActions(root, rerender){
+    root.querySelectorAll('[data-wa-payment]').forEach(el=> el.addEventListener('click', ()=> sendPaymentReceiptWhatsApp(Number(el.dataset.waPayment), 'fee')));
+    root.querySelectorAll('[data-print-receipt]').forEach(el=> el.addEventListener('click', ()=> printSingleReceipt(Number(el.dataset.printReceipt))));
+    root.querySelectorAll('[data-print-statement]').forEach(el=> el.addEventListener('click', ()=> printStudentStatement(el.dataset.printStatement)));
+    root.querySelectorAll('[data-edit-entry]').forEach(el=> el.addEventListener('click', ()=> editFeeEntryModal(Number(el.dataset.editEntry), rerender)));
+    root.querySelectorAll('[data-del-entry]').forEach(el=> el.addEventListener('click', ()=>{
+      if(!isAdmin()){ toast('Access Denied: Entry delete karne ki permission sirf Admin ko hai'); return; }
+      if(!confirm('Ye entry delete karein?')) return;
+      const id = Number(el.dataset.delEntry);
+      entries = entries.filter(e=>Number(e.id) !== id);
+      saveEntries();
+      toast('Entry deleted');
+      rerender();
+    }));
+  }
+
   // ---------- DASHBOARD ----------
   function renderDashboard(){
     const demand = students.reduce((a,s)=>a+totalDue(s),0);
@@ -1724,15 +1842,11 @@
       </div>`;
     }).join('') || `<div class="empty-state">Koi class data nahi</div>`;
 
-    const recent = entries.slice().sort((a,b)=> (b.date||'').localeCompare(a.date||'') || b.id-a.id).slice(0,6);
-    const recentRows = recent.map(e=>{
-      const s = students.find(x=>x.id===e.studentId);
-      return `<div class="recent-row">
-        <div><div class="recent-name">${esc(s?s.name:'Unknown')}</div>
-        <div class="recent-meta">${esc(e.month)} &middot; ${fmtDate(e.date)} &middot; ${esc(e.receiptNo)}</div></div>
-        <div class="recent-amt">+${fmt(e.amount)}</div>
-      </div>`;
-    }).join('') || `<div class="empty-state" style="padding:24px 10px;">Abhi tak koi entry nahi hui.<br><span class="hint">Fee Collection tab se pehli entry daalein.</span></div>`;
+    const recentAll = recentEntriesList('');
+    const recentShown = recentAll.slice(0, recentState.dash);
+    const recentRows = recentShown.map(recentRowHTML).join('') || `<div class="empty-state" style="padding:24px 10px;">Abhi tak koi entry nahi hui.<br><span class="hint">Fee Collection tab se pehli entry daalein.</span></div>`;
+    const recentMore = recentAll.length > recentShown.length
+      ? `<div class="recent-more"><span class="btn btn-ghost btn-sm" id="ekps-dash-more">Aur dikhayein (${recentAll.length - recentShown.length} baaki)</span></div>` : '';
 
     contentEl.innerHTML = `
       <div class="kpi-grid">
@@ -1765,15 +1879,17 @@
         <div class="panel">
           <div class="panel-head"><h3>Recent Collections</h3>
             <span class="btn btn-ghost btn-sm" id="ekps-goto-collect">+ New Entry</span></div>
-          <div class="panel-body">${recentRows}</div>
+          <div class="panel-body" id="ekps-dash-recent">${recentRows}${recentMore}</div>
         </div>
       </div>`;
     document.getElementById('ekps-goto-collect').addEventListener('click', ()=>go('collect'));
+    bindRecentActions(document.getElementById('ekps-dash-recent'), renderDashboard);
+    const dm = document.getElementById('ekps-dash-more');
+    if (dm) dm.addEventListener('click', ()=>{ recentState.dash += 10; renderDashboard(); });
   }
 
   // ---------- FEE COLLECTION ----------
   function renderCollect(){
-    const recent = entries.slice().sort((a,b)=> b.id-a.id).slice(0,8);
     contentEl.innerHTML = `
       <div class="two-col">
         <div class="panel">
@@ -1808,24 +1924,10 @@
           </div>
         </div>
         <div class="panel">
-          <div class="panel-head"><h3>Recent Entries</h3></div>
-          <div class="panel-body" id="ekps-recent-entries">
-            ${recent.length ? recent.map(e=>{
-              const s = students.find(x=>x.id===e.studentId);
-              return `<div class="recent-row" data-created-by="${e.createdBy||'admin'}">
-                <div><div class="recent-name">${esc(s?s.name:'—')} <span class="id-chip">${e.receiptNo}</span> ${e.createdBy==='user'?'<span class="entry-badge-user">Staff Entry</span>':''}</div>
-                <div class="recent-meta">${esc(e.month)} &middot; ${fmtDate(e.date)}</div></div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                  <div class="recent-amt">${fmt(e.amount)}</div>
-                  <div class="icon-btn" data-wa-payment="${e.id}" title="Payment confirmation WhatsApp par bhejein">📲</div>
-                  <div class="icon-btn" data-print-receipt="${e.id}" title="Payment Receipt print karein">${ICONS.print}</div>
-                  <div class="icon-btn" data-print-statement="${e.studentId}" title="Fee Statement print karein">🧾</div>
-                  ${isAdmin() ? `<div class="icon-btn" data-edit-entry="${e.id}" title="Entry edit karein (galat entry sahi karein)">✏️</div>` : ''}
-                  ${isAdmin() ? `<div class="icon-btn js-del-btn" data-del-entry="${e.id}" title="Delete">${ICONS.trash}</div>` : ''}
-                </div>
-              </div>`;
-            }).join('') : `<div class="empty-state">Koi entry nahi</div>`}
+          <div class="panel-head"><h3>Recent Entries</h3>
+            <div class="recent-tools"><input type="text" id="ekps-recent-q" placeholder="Naam / ID / Receipt search…" value="${esc(recentState.q)}"/></div>
           </div>
+          <div class="panel-body" id="ekps-recent-entries"></div>
         </div>
       </div>`;
 
@@ -1882,32 +1984,19 @@
       }
     });
 
-    contentEl.querySelectorAll('[data-wa-payment]').forEach(el=>{
-      el.addEventListener('click', ()=> sendPaymentReceiptWhatsApp(parseInt(el.dataset.waPayment), 'fee'));
-    });
-
-    contentEl.querySelectorAll('[data-print-receipt]').forEach(el=>{
-      el.addEventListener('click', ()=> printSingleReceipt(parseInt(el.dataset.printReceipt)));
-    });
-
-    contentEl.querySelectorAll('[data-print-statement]').forEach(el=>{
-      el.addEventListener('click', ()=> printStudentStatement(parseInt(el.dataset.printStatement)));
-    });
-
-    contentEl.querySelectorAll('[data-edit-entry]').forEach(el=>{
-      el.addEventListener('click', ()=> editFeeEntryModal(parseInt(el.dataset.editEntry), renderCollect));
-    });
-
-    contentEl.querySelectorAll('[data-del-entry]').forEach(el=>{
-      el.addEventListener('click', ()=>{
-        if(!isAdmin()){ toast('Access Denied: Entry delete karne ki permission sirf Admin ko hai'); return; }
-        if(!confirm('Ye entry delete karein?')) return;
-        entries = entries.filter(e=>e.id !== parseInt(el.dataset.delEntry));
-        saveEntries();
-        toast('Entry deleted');
-        renderCollect();
-      });
-    });
+    // Recent Entries: search + "aur dikhayein" (form me bhari hui details nahi hatengi)
+    const paintRecent = ()=>{
+      const box = document.getElementById('ekps-recent-entries');
+      const all = recentEntriesList(recentState.q);
+      const shown = all.slice(0, recentState.collect);
+      box.innerHTML = (shown.length ? shown.map(recentRowHTML).join('') : `<div class="empty-state">${recentState.q ? 'Is search se koi entry nahi mili' : 'Koi entry nahi'}</div>`)
+        + (all.length > shown.length ? `<div class="recent-more"><span class="btn btn-ghost btn-sm" id="ekps-recent-more">Aur dikhayein (${all.length - shown.length} baaki)</span></div>` : '');
+      bindRecentActions(box, renderCollect);
+      const more = document.getElementById('ekps-recent-more');
+      if (more) more.addEventListener('click', ()=>{ recentState.collect += 10; paintRecent(); });
+    };
+    document.getElementById('ekps-recent-q').addEventListener('input', e=>{ recentState.q = e.target.value; recentState.collect = 8; paintRecent(); });
+    paintRecent();
   }
 
   // ---------- STUDENTS ----------
@@ -4723,95 +4812,318 @@
 
   // ---------- Due Till (Current) — UPI QR on WhatsApp ----------
   const DEFAULT_UPI_ID = '7004186089@ybl';
+  const DEFAULT_PAY_URL = 'https://schoolfeepay.netlify.app/';
+  // Google Apps Script web app: Payment Link generate + sheet me save + WhatsApp URL return karta hai
+  const PAYLINK_GAS_URL = 'https://script.google.com/macros/s/AKfycbz9uOV0N8oGDdP6wbhnfdL-GygywqLO5YOkyIB_ydv3N7BUFz5aiK0nya51AMoyk5524Q/exec';
+  function payLinkGasUrl(){ return (schoolSettings && schoolSettings.payLinkGasUrl) || PAYLINK_GAS_URL; }
   function upiId(){ return (schoolSettings && schoolSettings.upiId) || DEFAULT_UPI_ID; }
-  function upiLink(amount, s){
-    const note = `Fee ${s.name} (ID ${s.id}) ${currentMonthName()}`;
+  function upiLink(amount, s, label){
+    const note = `Fee ${s.name} ID ${s.id} ${label || currentMonthName()}`.replace(/[^A-Za-z0-9 .\-_\/]/g,' ').replace(/\s+/g,' ').trim().slice(0,50);
     return `upi://pay?pa=${encodeURIComponent(upiId())}&pn=${encodeURIComponent(schoolSettings.name||'School Fee')}&am=${encodeURIComponent(Number(amount).toFixed(2))}&cu=INR&tn=${encodeURIComponent(note)}`;
   }
   function qrImageUrl(data, size){
     return `https://api.qrserver.com/v1/create-qr-code/?size=${size||400}x${size||400}&margin=10&data=${encodeURIComponent(data)}`;
   }
 
+  // Due QR sirf unhi students ke liye jinka mobile number save ho
+  function hasWaPhone(s){ return waPhone(s && s.mobNo).length >= 10; }
+
+  // Mobile number save karne ka chhota popup (Fee Ledger se)
+  function savePhoneModal(studentId, onDone){
+    const s = findStudentById(studentId);
+    if (!s) { toast('Student nahi mila'); return; }
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="ekps-ph-bg">
+        <div class="modal" style="width:380px; max-width:94vw;">
+          <div class="modal-head"><h3>📞 Mobile Number Save Karein</h3><div class="icon-btn" id="ekps-ph-close">✕</div></div>
+          <div class="modal-body">
+            <div class="hint" style="margin-bottom:12px;"><b>${esc(s.name)}</b> (ID ${esc(String(s.id))}, Class ${esc(s.cls)}) ka WhatsApp number save karein. Number save hone ke baad <b>Due QR</b> ka option aa jayega.</div>
+            <div class="field">
+              <label>Mobile Number (10 digit)</label>
+              <input type="tel" id="ekps-ph-input" inputmode="numeric" maxlength="14" placeholder="e.g. 9876543210" value="${esc(s.mobNo||'')}"/>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <span class="btn btn-ghost" id="ekps-ph-cancel">Cancel</span>
+            <span class="btn btn-accent" id="ekps-ph-save">Save Number</span>
+          </div>
+        </div>
+      </div>`;
+    const close = ()=>{ modalRoot.innerHTML=''; };
+    const inp = document.getElementById('ekps-ph-input');
+    inp.focus();
+    document.getElementById('ekps-ph-close').addEventListener('click', close);
+    document.getElementById('ekps-ph-cancel').addEventListener('click', close);
+    document.getElementById('ekps-ph-bg').addEventListener('click', e=>{ if (e.target.id==='ekps-ph-bg') close(); });
+    const save = ()=>{
+      let d = (inp.value||'').replace(/\D/g,'');
+      if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+      if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+      if (!/^[6-9]\d{9}$/.test(d)) { toast('Sahi 10 digit ka mobile number daalein'); inp.focus(); return; }
+      s.mobNo = d;
+      saveStudents();
+      try { logAuditLocal('Save Mobile', `${s.name} (ID ${s.id}) -> ${d}`); } catch(err){}
+      close();
+      toast('Number save ho gaya — ab Due QR use kar sakte hain');
+      if (typeof onDone === 'function') onDone();
+    };
+    document.getElementById('ekps-ph-save').addEventListener('click', save);
+    inp.addEventListener('keydown', e=>{ if (e.key === 'Enter') save(); });
+  }
+
+  // Parent ko jaane wala https link: khulte hi UPI app amount ke saath open hoti hai
+  function payPageBase(){
+    // Payment link ka page: pehle settings me save kiya address, nahi to Google Apps Script (exec) wala pay page
+    // Purana Apps Script address (agar pehle save ho gaya ho) ignore karo — ab Fee Manager ka apna hosted address use hota hai
+    const saved = (schoolSettings && schoolSettings.payBaseUrl) || '';
+    if (saved && !/ekpsfee\.github\.io|script\.google\.com/i.test(saved)) return saved;   // purana github address ignore
+    return DEFAULT_PAY_URL;
+  }
+  function payPageLink(amount, s, label){
+    const base = payPageBase();
+    if (!base) return '';
+    const params = new URLSearchParams({
+      pay: '1', pa: upiId(), am: String(amount), n: s.name, i: String(s.id), c: String(s.cls),
+      m: label || currentMonthName(), sn: schoolSettings.name || 'School Fee'
+    });
+    return base.split('?')[0].split('#')[0] + '?' + params.toString();
+  }
+
   function dueQrWhatsAppModal(studentId){
     const s = findStudentById(studentId);
     if (!s) { toast('Student nahi mila'); return; }
+    if (!hasWaPhone(s)) { savePhoneModal(s.id, renderLedger); return; }
     const month = currentMonthName();
     const dueNow = Math.round(dueTillCurrentMonth(s));
-    if (dueNow <= 0) { toast(`${s.name}: Due Till ${month} (Current) me koi baki nahi hai`); return; }
+    const fullRest = Math.round(totalDue(s) - totalPaid(s.id));
+    if (dueNow <= 0 && fullRest <= 0) { toast(`${s.name}: koi due baki nahi hai`); return; }
+    let kind = dueNow > 0 ? 'due' : 'full';           // 'due' = Due Till Current Month, 'full' = Full Session Rest Due
+    const kindAmt = ()=> kind === 'full' ? fullRest : dueNow;
+    const kindTitle = ()=> kind === 'full' ? 'Full Session Rest Due' : `Due Till ${month} (Current)`;
+    const kindShort = ()=> kind === 'full' ? 'Full Session Rest Due' : `Due Till ${month}`;
+    const kindLabel = ()=> kind === 'full' ? 'Full Session' : month;   // payment note / pay-page label
     modalRoot.innerHTML = `
       <div class="modal-backdrop" id="ekps-qr-bg">
-        <div class="modal" style="width:400px; max-width:94vw;">
-          <div class="modal-head"><h3>💳 Payment QR — ${esc(s.name)}</h3><div class="icon-btn" id="ekps-qr-close">✕</div></div>
+        <div class="modal" style="width:440px; max-width:94vw;">
+          <div class="modal-head"><h3>💳 Payment Link / QR — ${esc(s.name)}</h3><div class="icon-btn" id="ekps-qr-close">✕</div></div>
           <div class="modal-body">
-            <div class="qr-meta" style="text-align:center;">Due Till ${esc(month)} (Current) &middot; Class ${esc(s.cls)} &middot; ID ${esc(String(s.id))}</div>
-            <div class="qr-box">
-              <img id="ekps-qr-img" alt="UPI QR" src="${qrImageUrl(upiLink(dueNow, s), 400)}"/>
-              <div class="qr-amt" id="ekps-qr-amt-label">${fmt(dueNow)}</div>
-              <div class="qr-meta">UPI ID: <b>${esc(upiId())}</b></div>
+            <div class="field">
+              <label>Kis amount ka link banana hai?</label>
+              <select id="ekps-qr-kind">
+                <option value="due" ${dueNow<=0?'disabled':''} ${kind==='due'?'selected':''}>Due Till ${esc(month)} (Current) — ${fmt(dueNow)}</option>
+                <option value="full" ${fullRest<=0?'disabled':''} ${kind==='full'?'selected':''}>Full Session Rest Due — ${fmt(fullRest)}</option>
+              </select>
+            </div>
+            <div class="qr-meta" style="text-align:center;" id="ekps-qr-meta"></div>
+            <div class="qr-box"><img id="ekps-qr-img" alt="UPI QR" src=""/></div>
+            <div class="qr-amt" id="ekps-qr-amt-label" style="text-align:center;"></div>
+            <div class="qr-meta" style="text-align:center; margin-bottom:12px;">UPI ID: <b>${esc(upiId())}</b></div>
+            <div class="field">
+              <label>Payment Amount (₹) — zarurat ho to badal sakte hain</label>
+              <input type="number" id="ekps-qr-amt" min="1" value="${kindAmt()}"/>
             </div>
             <div class="field">
-              <label>QR Amount (₹) — zarurat ho to badal sakte hain</label>
-              <input type="number" id="ekps-qr-amt" min="1" value="${dueNow}"/>
+              <label>Payment page ka address (Fee Manager ka online link)</label>
+              <input type="text" id="ekps-qr-base" value="${esc(payPageBase())}" placeholder="https://schoolfeepay.netlify.app/"/>
+              <div class="hint" style="margin-top:4px;">Parent ka link isi address par khulta hai (Fee Manager yahin hosted hona chahiye). Address badle to yahan naya daal dein — apne aap save ho jata hai.</div>
             </div>
+            <div class="hint"><b>Payment Link:</b> parent link par click kare to mobile me UPI app (PhonePe / GPay / Paytm) amount ke saath apne aap khul jati hai; na khule to page par "UPI App se Pay Karein" button hai. QR scan karne par bhi yahi amount aata hai.</div>
           </div>
           <div class="modal-foot" style="flex-wrap:wrap; gap:8px;">
-            <span class="btn btn-ghost" id="ekps-qr-download">⬇ QR Download</span>
-            <span class="btn btn-ghost" id="ekps-qr-copy">📋 UPI Link Copy</span>
-            <span class="btn btn-accent" id="ekps-qr-send">📲 WhatsApp par bhejein</span>
+            ${(dueNow>0 && fullRest>0 && fullRest!==dueNow) ? `<span class="btn btn-accent" id="ekps-qr-send-both" style="width:100%; justify-content:center;" title="Ek hi WhatsApp message me 2 alag Payment Link: Due Till ${esc(month)} aur Full Session Rest Due">🔗🔗 WhatsApp par Dono Links bhejein (${esc(month)} ${fmt(dueNow)} + Full Session ${fmt(fullRest)})</span>` : ''}
+            <span class="btn btn-accent" id="ekps-qr-send-link" style="width:100%; justify-content:center;">🔗 WhatsApp par Payment Link bhejein</span>
+            <span class="btn btn-ghost" id="ekps-qr-copy-link">📋 Link Copy</span>
+            <span class="btn btn-ghost" id="ekps-qr-test-link">👁 Link Kholkar Dekhein</span>
+            <span class="btn btn-ghost" id="ekps-qr-copy">📋 UPI ID Copy</span>
+            <span class="btn btn-ghost" id="ekps-qr-save">⬇ QR Image Save</span>
+            <span class="btn btn-ghost" id="ekps-qr-send-text">💬 Sirf Message (UPI ID + Amount)</span>
+            <span class="btn btn-ghost" id="ekps-qr-send-img" style="width:100%; justify-content:center;">📲 WhatsApp par QR Image + Message bhejein</span>
           </div>
         </div>
       </div>`;
     const close = ()=>{ modalRoot.innerHTML=''; };
     const amtEl = document.getElementById('ekps-qr-amt');
+    const imgEl = document.getElementById('ekps-qr-img');
+    const baseEl = document.getElementById('ekps-qr-base');
+    const kindEl = document.getElementById('ekps-qr-kind');
     const getAmt = ()=> Math.round(parseFloat(amtEl.value) || 0);
-    amtEl.addEventListener('input', ()=>{
-      const a = getAmt();
-      document.getElementById('ekps-qr-amt-label').textContent = a>0 ? fmt(a) : '—';
-      if (a>0) document.getElementById('ekps-qr-img').src = qrImageUrl(upiLink(a, s), 400);
-    });
-    document.getElementById('ekps-qr-close').addEventListener('click', close);
-    document.getElementById('ekps-qr-bg').addEventListener('click', e=>{ if (e.target.id==='ekps-qr-bg') close(); });
-
-    document.getElementById('ekps-qr-copy').addEventListener('click', ()=>{
-      const a = getAmt(); if (a<=0) { toast('Sahi amount daalein'); return; }
-      const link = upiLink(a, s);
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(()=>toast('UPI link copy ho gaya'), ()=>toast(link));
-      else toast(link);
-    });
-
-    document.getElementById('ekps-qr-download').addEventListener('click', ()=>{
-      const a = getAmt(); if (a<=0) { toast('Sahi amount daalein'); return; }
-      const url = qrImageUrl(upiLink(a, s), 600);
-      fetch(url).then(r=>r.blob()).then(b=>{
-        const ln = document.createElement('a');
-        ln.href = URL.createObjectURL(b);
-        ln.download = `QR_${s.name.replace(/\s+/g,'_')}_${a}.png`;
-        document.body.appendChild(ln); ln.click(); ln.remove();
-      }).catch(()=>{ window.open(url, '_blank'); });
-    });
-
-    document.getElementById('ekps-qr-send').addEventListener('click', ()=>{
-      const a = getAmt(); if (a<=0) { toast('Sahi amount daalein'); return; }
-      const phone = waPhone(s.mobNo);
-      if (!phone) { toast('Is student ka mobile number ledger me nahi hai'); return; }
+    const buildText = (a)=>{
       const lines = [
         `*${schoolSettings.name}*`,
-        `Fee Payment Request — Due Till ${month}`,
+        `Fee Payment Request — ${kindShort()}`,
         '',
         `Student: ${s.name} (ID: ${s.id})`,
         `Class: ${s.cls}`,
         `Payable Amount: *${fmt(a)}*`,
         '',
-        `UPI ID: ${upiId()}`,
+        '*UPI se payment karne ke liye:*',
+        `UPI ID: *${upiId()}*`,
+        `Amount: *${fmt(a)}*`,
         '',
-        'Payment QR (open karke kisi bhi UPI app se scan karein):',
-        qrImageUrl(upiLink(a, s), 500),
+        '1) PhonePe / GPay / Paytm kholein',
+        '2) Upar di gayi UPI ID par pay karein (ya QR image scan karein — amount apne aap bhar jayega)',
+        `3) Remark me likhein: ${s.name} (ID ${s.id})`,
         '',
         'Payment ke baad screenshot is number par bhej dein. Dhanyavaad!',
         '— Accounts Office'
       ];
       if (schoolSettings.waCustomMessage) { lines.push(''); lines.push(schoolSettings.waCustomMessage); }
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank');
+      return lines.join('\n');
+    };
+    const refresh = ()=>{
+      const a = getAmt();
+      document.getElementById('ekps-qr-meta').innerHTML = `${esc(kindTitle())} &middot; Class ${esc(s.cls)} &middot; ID ${esc(String(s.id))}`;
+      document.getElementById('ekps-qr-amt-label').textContent = a>0 ? fmt(a) : '—';
+      if (a>0) imgEl.src = qrImageUrl(upiLink(a, s, kindLabel()), 400);
+    };
+    kindEl.addEventListener('change', ()=>{ kind = kindEl.value; amtEl.value = kindAmt(); refresh(); });
+    amtEl.addEventListener('input', refresh);
+    // Payment page address: sahi https URL ho to turant save (settings me), khaali karne par default par wapas
+    baseEl.addEventListener('change', ()=>{
+      const v = (baseEl.value||'').trim();
+      if (!v) { delete schoolSettings.payBaseUrl; saveSchoolSettings(); baseEl.value = payPageBase(); toast('Default payment page address wapas set ho gaya'); return; }
+      if (!/^https:\/\/[^\s]+\.[^\s]+/i.test(v)) { toast('Sahi https:// address daalein'); baseEl.value = payPageBase(); return; }
+      schoolSettings.payBaseUrl = v.split('?')[0].split('#')[0];
+      saveSchoolSettings();
+      baseEl.value = schoolSettings.payBaseUrl;
+      toast('Payment page address save ho gaya');
+    });
+    refresh();
+    document.getElementById('ekps-qr-close').addEventListener('click', close);
+    document.getElementById('ekps-qr-bg').addEventListener('click', e=>{ if (e.target.id==='ekps-qr-bg') close(); });
+
+    const okAmt = ()=>{ const a = getAmt(); if (a<=0) { toast('Sahi amount daalein'); return 0; } return a; };
+    const fileName = (a)=> `UPI_QR_${String(s.name).replace(/[^A-Za-z0-9]+/g,'_')}_${a}.png`;
+    // QR image ko blob ke roop me laata hai (share / download ke liye)
+    const getQrBlob = (a)=> fetch(qrImageUrl(upiLink(a, s, kindLabel()), 600)).then(r=>{ if(!r.ok) throw new Error('qr fetch failed'); return r.blob(); });
+    const downloadBlob = (blob, name)=>{
+      const url = URL.createObjectURL(blob);
+      const el = document.createElement('a');
+      el.href = url; el.download = name;
+      document.body.appendChild(el); el.click(); el.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    };
+    const openWaChat = (a)=>{
+      const phone = waPhone(s.mobNo);
+      if (!phone) { toast('Is student ka mobile number ledger me nahi hai'); return false; }
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(buildText(a))}`, '_blank');
+      return true;
+    };
+
+    // ---- Payment Link (Google Apps Script pay page): click -> UPI app, amount bhara hua ----
+    const buildLinkText = (a)=>{
+      const lines = [
+        `*${schoolSettings.name}*`,
+        `Fee Payment Request — ${kindShort()}`,
+        '',
+        `Student: ${s.name} (ID: ${s.id})`,
+        `Class: ${s.cls}`,
+        `Payable Amount: *${fmt(a)}*`,
+        '',
+        `👇 Payment ke liye neeche ke link par click karein — aapki UPI app khulegi aur ${fmt(a)} ka amount pehle se bhara hoga (app na khule to page par "UPI App se Pay Karein" dabayein):`,
+        payPageLink(a, s, kindLabel()),
+        '',
+        `Agar link na khule to UPI ID *${upiId()}* par ${fmt(a)} bhej dein.`,
+        'Payment ke baad screenshot is number par bhej dein. Dhanyavaad!',
+        '— Accounts Office'
+      ];
+      if (schoolSettings.waCustomMessage) { lines.push(''); lines.push(schoolSettings.waCustomMessage); }
+      return lines.join('\n');
+    };
+    document.getElementById('ekps-qr-send-link').addEventListener('click', ()=>{
+      const a = okAmt(); if (!a) return;
+      const phone = waPhone(s.mobNo);
+      if (!phone) { toast('Is student ka mobile number ledger me nahi hai'); return; }
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(buildLinkText(a))}`, '_blank');
+    });
+    // ---- Dono links ek message me: (1) Due Till Current Month  (2) Full Session Rest Due ----
+    const buildBothText = ()=>{
+      const lines = [
+        `*${schoolSettings.name}*`,
+        'Fee Payment Request',
+        '',
+        `Student: ${s.name} (ID: ${s.id})`,
+        `Class: ${s.cls}`,
+        '',
+        'Payment ke liye neeche 2 option hain. Jo amount dena chahein uske link par click karein — aapki UPI app (PhonePe / GPay / Paytm) us amount ke saath khul jayegi:',
+        '',
+        `*1) Due Till ${month} (Current): ${fmt(dueNow)}*`,
+        payPageLink(dueNow, s, month),
+        '',
+        `*2) Full Session Rest Due: ${fmt(fullRest)}*`,
+        payPageLink(fullRest, s, 'Full Session'),
+        '',
+        `(App na khule to page par "UPI App se Pay Karein" dabayein, ya UPI ID *${upiId()}* par seedha bhej dein.)`,
+        'Payment ke baad screenshot is number par bhej dein. Dhanyavaad!',
+        '— Accounts Office'
+      ];
+      if (schoolSettings.waCustomMessage) { lines.push(''); lines.push(schoolSettings.waCustomMessage); }
+      return lines.join('\n');
+    };
+    const bothBtn = document.getElementById('ekps-qr-send-both');
+    if (bothBtn) bothBtn.addEventListener('click', ()=>{
+      const phone = waPhone(s.mobNo);
+      if (!phone) { toast('Is student ka mobile number ledger me nahi hai'); return; }
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(buildBothText())}`, '_blank');
+      toast('Dono payment links WhatsApp me ready hain');
+      // Optional: Google Sheet me log (background me; fail ho to koi farq nahi)
+      try {
+        fetch(payLinkGasUrl(), { method:'POST', mode:'no-cors', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body: JSON.stringify({
+          action: 'createPaymentLinks',
+          studentId: String(s.id), studentName: s.name, cls: String(s.cls), phone: phone,
+          schoolName: schoolSettings.name || 'School Fee',
+          upiId: upiId(), payBaseUrl: payPageBase(),
+          customMessage: schoolSettings.waCustomMessage || '',
+          links: [
+            { dueType: `Due Till ${month} (Current)`, label: month, amount: dueNow },
+            { dueType: 'Full Session Rest Due', label: 'Full Session', amount: fullRest }
+          ]
+        }) }).catch(()=>{});
+      } catch(err){}
+    });
+    document.getElementById('ekps-qr-copy-link').addEventListener('click', ()=>{
+      const a = okAmt(); if (!a) return;
+      const l = payPageLink(a, s, kindLabel());
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(l).then(()=>toast('Payment link copy ho gaya'), ()=>prompt('Link copy karein:', l));
+      else prompt('Link copy karein:', l);
+    });
+    document.getElementById('ekps-qr-test-link').addEventListener('click', ()=>{
+      const a = okAmt(); if (!a) return;
+      window.open(payPageLink(a, s, kindLabel()), '_blank');
+    });
+    document.getElementById('ekps-qr-copy').addEventListener('click', ()=>{
+      const id = upiId();
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(id).then(()=>toast('UPI ID copy ho gayi'), ()=>prompt('UPI ID copy karein:', id));
+      else prompt('UPI ID copy karein:', id);
+    });
+    document.getElementById('ekps-qr-save').addEventListener('click', ()=>{
+      const a = okAmt(); if (!a) return;
+      getQrBlob(a).then(b=>{ downloadBlob(b, fileName(a)); toast('QR image save ho gayi'); })
+        .catch(()=>{ window.open(qrImageUrl(upiLink(a, s, kindLabel()), 600), '_blank'); toast('Image naye tab me khuli — long-press/right-click karke save karein'); });
+    });
+    document.getElementById('ekps-qr-send-text').addEventListener('click', ()=>{
+      const a = okAmt(); if (!a) return;
+      openWaChat(a);
+    });
+    document.getElementById('ekps-qr-send-img').addEventListener('click', ()=>{
+      const a = okAmt(); if (!a) return;
+      if (!waPhone(s.mobNo)) { toast('Is student ka mobile number ledger me nahi hai'); return; }
+      getQrBlob(a).then(blob=>{
+        const file = new File([blob], fileName(a), { type: 'image/png' });
+        // Mobile: share sheet se WhatsApp chunein — QR image + message ek saath jaate hain
+        if (navigator.canShare && navigator.canShare({ files:[file] }) && navigator.share) {
+          return navigator.share({ files:[file], text: buildText(a) }).then(()=>{
+            toast('WhatsApp me us parent ka chat chunkar bhej dein');
+          }).catch(err=>{ if (err && err.name === 'AbortError') return; throw err; });
+        }
+        // Desktop / unsupported browser: image download + WhatsApp chat message ke saath khulti hai
+        downloadBlob(blob, fileName(a));
+        openWaChat(a);
+        toast('QR image download ho gayi — WhatsApp chat me attach karke bhej dein');
+      }).catch(()=>{
+        openWaChat(a);
+        toast('QR image nahi ban payi (internet check karein) — abhi sirf message khula hai');
+      });
     });
   }
 
@@ -5167,7 +5479,9 @@
                       <span class="act-btn stmt" data-statement="${s.id}" title="Statement nikalein"><span class="ai">🧾</span> Statement</span>
                       <span class="act-btn wa" data-wa-send="${s.id}" title="Demand Bill WhatsApp par bhejein"><span class="ai">📲</span> Bill WA</span>
                       <span class="act-btn bill" data-single-demand="${s.id}" title="Is student ka Demand Bill (A5) print/PDF karein"><span class="ai">🖨️</span> Demand Bill</span>
-                      <span class="act-btn qr wide" data-pay-qr="${s.id}" title="Due Till ${esc(currentMonthName())} (Current) ka Payment QR WhatsApp par bhejein"><span class="ai">💳</span> Due QR — WhatsApp</span>
+                      ${hasWaPhone(s)
+                        ? `<span class="act-btn qr wide" data-pay-qr="${s.id}" title="Due Till ${esc(currentMonthName())} (Current) ya Full Session Rest Due ka Payment Link / QR WhatsApp par bhejein"><span class="ai">💳</span> Due QR / Payment Link</span>`
+                        : `<span class="act-btn phone wide" data-save-phone="${s.id}" title="Mobile number save nahi hai — pehle number save karein, uske baad Due QR aayega"><span class="ai">📞</span> Number Save Karein (Due QR ke liye)</span>`}
                     </div>
                   </td>
                 </tr>
@@ -5216,6 +5530,10 @@
     contentEl.querySelectorAll('[data-statement]').forEach(el=> el.addEventListener('click', (e)=>{
       e.stopPropagation();
       printStudentStatement(el.dataset.statement);
+    }));
+    contentEl.querySelectorAll('[data-save-phone]').forEach(el=> el.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      savePhoneModal(el.dataset.savePhone, renderLedger);
     }));
     contentEl.querySelectorAll('[data-pay-qr]').forEach(el=> el.addEventListener('click', (e)=>{
       e.stopPropagation();
