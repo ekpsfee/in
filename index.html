@@ -261,6 +261,29 @@
     display:flex; align-items:center; justify-content:center; cursor:pointer; color: var(--slate);
   }
   #ekps-root .icon-btn:hover { background: var(--paper); color: var(--ink); }
+
+  /* Fee Ledger — bade, labelled action buttons */
+  #ekps-root .act-cell { min-width: 250px; }
+  #ekps-root .act-grid { display:grid; grid-template-columns: 1fr 1fr; gap:6px; }
+  #ekps-root .act-btn {
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    min-height:38px; padding:7px 10px; border-radius:9px; border:1px solid var(--border-strong);
+    background:#fff; color:var(--ink); font-size:13px; font-weight:600; line-height:1.1;
+    cursor:pointer; user-select:none; white-space:nowrap; transition: background .12s, transform .05s;
+  }
+  #ekps-root .act-btn:hover { background: var(--paper); }
+  #ekps-root .act-btn:active { transform: scale(.97); }
+  #ekps-root .act-btn .ai { font-size:16px; line-height:1; }
+  #ekps-root .act-btn.collect { background:#E8F5EC; border-color:#B7DFC4; color:#1B6B3A; }
+  #ekps-root .act-btn.wa { background:#E7F8EE; border-color:#A8E0BE; color:#128C4B; }
+  #ekps-root .act-btn.qr { background:#EEF0FF; border-color:#C5CAF5; color:#3B3FB8; }
+  #ekps-root .act-btn.stmt { background:#FFF7E6; border-color:#F0D9A6; color:#8A5A00; }
+  #ekps-root .act-btn.bill { background:#F3F1EA; }
+  #ekps-root .act-btn.wide { grid-column: 1 / -1; }
+  #ekps-root .qr-box { text-align:center; margin:6px 0 12px; }
+  #ekps-root .qr-box img { width:240px; height:240px; border:1px solid var(--border-strong); border-radius:10px; background:#fff; padding:8px; }
+  #ekps-root .qr-amt { font-size:26px; font-weight:800; margin:6px 0 2px; }
+  #ekps-root .qr-meta { font-size:12.5px; color:var(--slate); }
   #ekps-root .icon-btn svg { width:14px; height:14px; }
 
   #ekps-root .toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
@@ -1292,6 +1315,7 @@
       salesInvoices = r ? JSON.parse(r) : [];
     } catch(e){ salesInvoices = []; }
 
+    normalizeIds();
     ready = true;
 
     if (gasConfigured()){
@@ -1311,6 +1335,7 @@
         try { if (d.vendors) vendors = JSON.parse(d.vendors); } catch(e){}
         try { if (d.purchaseOrders) purchaseOrders = JSON.parse(d.purchaseOrders); } catch(e){}
         try { if (d.salesInvoices) salesInvoices = JSON.parse(d.salesInvoices); } catch(e){}
+        normalizeIds();
         cacheLocally();
         setSyncStatus('synced');
         render();
@@ -1400,7 +1425,27 @@
     rec.version_id = genId();
     return rec;
   }
+  // ---------- ID normalisation ----------
+  // Backup restore / Google Sheet sync / import ke baad kai baar IDs text ("101") ban jati hain.
+  // App ke buttons number ID expect karte hain, isliye sab collections me numeric-string IDs ko number bana do.
+  function normalizeIds(){
+    const fix = (o)=>{
+      if (!o || typeof o !== 'object') return;
+      Object.keys(o).forEach(k=>{
+        const v = o[k];
+        if ((k === 'id' || /Id$/.test(k)) && typeof v === 'string' && /^\d+$/.test(v)) o[k] = Number(v);
+        else if (/Ids$/.test(k) && Array.isArray(v)) o[k] = v.map(x=> (typeof x === 'string' && /^\d+$/.test(x)) ? Number(x) : x);
+      });
+      if (Array.isArray(o.bills)) o.bills.forEach(fix);
+    };
+    [students, entries, admissions, transportRoutes, transportEntries, inventoryItems,
+     inventoryTxns, vendors, purchaseOrders, salesInvoices, exams].forEach(arr=>{
+      if (Array.isArray(arr)) arr.forEach(fix);
+    });
+  }
+
   function saveStudents(){
+    normalizeIds();
     students.forEach(stampVersion);
     try { localStorage.setItem('ekps_students', JSON.stringify(students)); }
     catch(e){ console.error('save students failed', e); }
@@ -1408,6 +1453,7 @@
     maybeAutoBackup();
   }
   function saveEntries(){
+    normalizeIds();
     entries.forEach(stampVersion);
     try { localStorage.setItem('ekps_entries', JSON.stringify(entries)); }
     catch(e){ console.error('save entries failed', e); }
@@ -4675,6 +4721,100 @@
     return digits;
   }
 
+  // ---------- Due Till (Current) — UPI QR on WhatsApp ----------
+  const DEFAULT_UPI_ID = '7004186089@ybl';
+  function upiId(){ return (schoolSettings && schoolSettings.upiId) || DEFAULT_UPI_ID; }
+  function upiLink(amount, s){
+    const note = `Fee ${s.name} (ID ${s.id}) ${currentMonthName()}`;
+    return `upi://pay?pa=${encodeURIComponent(upiId())}&pn=${encodeURIComponent(schoolSettings.name||'School Fee')}&am=${encodeURIComponent(Number(amount).toFixed(2))}&cu=INR&tn=${encodeURIComponent(note)}`;
+  }
+  function qrImageUrl(data, size){
+    return `https://api.qrserver.com/v1/create-qr-code/?size=${size||400}x${size||400}&margin=10&data=${encodeURIComponent(data)}`;
+  }
+
+  function dueQrWhatsAppModal(studentId){
+    const s = findStudentById(studentId);
+    if (!s) { toast('Student nahi mila'); return; }
+    const month = currentMonthName();
+    const dueNow = Math.round(dueTillCurrentMonth(s));
+    if (dueNow <= 0) { toast(`${s.name}: Due Till ${month} (Current) me koi baki nahi hai`); return; }
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="ekps-qr-bg">
+        <div class="modal" style="width:400px; max-width:94vw;">
+          <div class="modal-head"><h3>💳 Payment QR — ${esc(s.name)}</h3><div class="icon-btn" id="ekps-qr-close">✕</div></div>
+          <div class="modal-body">
+            <div class="qr-meta" style="text-align:center;">Due Till ${esc(month)} (Current) &middot; Class ${esc(s.cls)} &middot; ID ${esc(String(s.id))}</div>
+            <div class="qr-box">
+              <img id="ekps-qr-img" alt="UPI QR" src="${qrImageUrl(upiLink(dueNow, s), 400)}"/>
+              <div class="qr-amt" id="ekps-qr-amt-label">${fmt(dueNow)}</div>
+              <div class="qr-meta">UPI ID: <b>${esc(upiId())}</b></div>
+            </div>
+            <div class="field">
+              <label>QR Amount (₹) — zarurat ho to badal sakte hain</label>
+              <input type="number" id="ekps-qr-amt" min="1" value="${dueNow}"/>
+            </div>
+          </div>
+          <div class="modal-foot" style="flex-wrap:wrap; gap:8px;">
+            <span class="btn btn-ghost" id="ekps-qr-download">⬇ QR Download</span>
+            <span class="btn btn-ghost" id="ekps-qr-copy">📋 UPI Link Copy</span>
+            <span class="btn btn-accent" id="ekps-qr-send">📲 WhatsApp par bhejein</span>
+          </div>
+        </div>
+      </div>`;
+    const close = ()=>{ modalRoot.innerHTML=''; };
+    const amtEl = document.getElementById('ekps-qr-amt');
+    const getAmt = ()=> Math.round(parseFloat(amtEl.value) || 0);
+    amtEl.addEventListener('input', ()=>{
+      const a = getAmt();
+      document.getElementById('ekps-qr-amt-label').textContent = a>0 ? fmt(a) : '—';
+      if (a>0) document.getElementById('ekps-qr-img').src = qrImageUrl(upiLink(a, s), 400);
+    });
+    document.getElementById('ekps-qr-close').addEventListener('click', close);
+    document.getElementById('ekps-qr-bg').addEventListener('click', e=>{ if (e.target.id==='ekps-qr-bg') close(); });
+
+    document.getElementById('ekps-qr-copy').addEventListener('click', ()=>{
+      const a = getAmt(); if (a<=0) { toast('Sahi amount daalein'); return; }
+      const link = upiLink(a, s);
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(()=>toast('UPI link copy ho gaya'), ()=>toast(link));
+      else toast(link);
+    });
+
+    document.getElementById('ekps-qr-download').addEventListener('click', ()=>{
+      const a = getAmt(); if (a<=0) { toast('Sahi amount daalein'); return; }
+      const url = qrImageUrl(upiLink(a, s), 600);
+      fetch(url).then(r=>r.blob()).then(b=>{
+        const ln = document.createElement('a');
+        ln.href = URL.createObjectURL(b);
+        ln.download = `QR_${s.name.replace(/\s+/g,'_')}_${a}.png`;
+        document.body.appendChild(ln); ln.click(); ln.remove();
+      }).catch(()=>{ window.open(url, '_blank'); });
+    });
+
+    document.getElementById('ekps-qr-send').addEventListener('click', ()=>{
+      const a = getAmt(); if (a<=0) { toast('Sahi amount daalein'); return; }
+      const phone = waPhone(s.mobNo);
+      if (!phone) { toast('Is student ka mobile number ledger me nahi hai'); return; }
+      const lines = [
+        `*${schoolSettings.name}*`,
+        `Fee Payment Request — Due Till ${month}`,
+        '',
+        `Student: ${s.name} (ID: ${s.id})`,
+        `Class: ${s.cls}`,
+        `Payable Amount: *${fmt(a)}*`,
+        '',
+        `UPI ID: ${upiId()}`,
+        '',
+        'Payment QR (open karke kisi bhi UPI app se scan karein):',
+        qrImageUrl(upiLink(a, s), 500),
+        '',
+        'Payment ke baad screenshot is number par bhej dein. Dhanyavaad!',
+        '— Accounts Office'
+      ];
+      if (schoolSettings.waCustomMessage) { lines.push(''); lines.push(schoolSettings.waCustomMessage); }
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank');
+    });
+  }
+
   function sendBillWhatsApp(studentId){
     const s = findStudentById(studentId);
     if (!s) { toast('Student nahi mila'); return; }
@@ -5021,11 +5161,14 @@
                   <td class="mono">${fmt(paid)}</td>
                   <td class="mono">${fmt(rest)}</td>
                   <td><span class="status-badge status-${st}">${st}</span></td>
-                  <td style="white-space:nowrap;">
-                    <span class="icon-btn" data-collect-fee="${s.id}" title="Fee Collection karein">${ICONS.collect}</span>
-                    <span class="icon-btn" data-wa-send="${s.id}" title="Bill WhatsApp par bhejein">📲</span>
-                    <span class="icon-btn" data-statement="${s.id}" title="Statement nikalein">🧾</span>
-                    <span class="icon-btn" data-single-demand="${s.id}" title="Is student ka Demand Bill (A5) print/PDF karein">🖨️</span>
+                  <td class="act-cell">
+                    <div class="act-grid">
+                      <span class="act-btn collect" data-collect-fee="${s.id}" title="Fee Collection karein"><span class="ai">💰</span> Collect</span>
+                      <span class="act-btn stmt" data-statement="${s.id}" title="Statement nikalein"><span class="ai">🧾</span> Statement</span>
+                      <span class="act-btn wa" data-wa-send="${s.id}" title="Demand Bill WhatsApp par bhejein"><span class="ai">📲</span> Bill WA</span>
+                      <span class="act-btn bill" data-single-demand="${s.id}" title="Is student ka Demand Bill (A5) print/PDF karein"><span class="ai">🖨️</span> Demand Bill</span>
+                      <span class="act-btn qr wide" data-pay-qr="${s.id}" title="Due Till ${esc(currentMonthName())} (Current) ka Payment QR WhatsApp par bhejein"><span class="ai">💳</span> Due QR — WhatsApp</span>
+                    </div>
                   </td>
                 </tr>
                 ${expanded?`<tr class="detail-row"><td colspan="10"><div class="month-grid">${months}</div></td></tr>`:''}
@@ -5073,6 +5216,10 @@
     contentEl.querySelectorAll('[data-statement]').forEach(el=> el.addEventListener('click', (e)=>{
       e.stopPropagation();
       printStudentStatement(el.dataset.statement);
+    }));
+    contentEl.querySelectorAll('[data-pay-qr]').forEach(el=> el.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      dueQrWhatsAppModal(el.dataset.payQr);
     }));
     contentEl.querySelectorAll('[data-single-demand]').forEach(el=> el.addEventListener('click', (e)=>{
       e.stopPropagation();
