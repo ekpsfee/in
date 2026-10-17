@@ -225,6 +225,12 @@
   }
   #ekps-root .pick-preview.show { display:block; }
   #ekps-root .pick-preview b { font-weight:700; }
+  #ekps-root .pp-head { font-size:13.5px; margin-bottom:8px; }
+  #ekps-root .pp-grid { display:grid; grid-template-columns: 1fr 1fr; gap:6px 14px; }
+  #ekps-root .pp-grid > div { display:flex; flex-direction:column; gap:1px; min-width:0; }
+  #ekps-root .pp-grid span { font-size:10.5px; color:var(--slate); text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+  #ekps-root .pp-grid b { font-size:13px; overflow-wrap:anywhere; }
+  #ekps-root .pp-due { color:var(--rust); } #ekps-root .pp-clear { color:var(--green); }
 
   /* ---------- Tables ---------- */
   #ekps-root table.data { width:100%; border-collapse: collapse; font-size: 13px; }
@@ -528,7 +534,27 @@
   #ekps-root .cart-totals { border-top:2px solid var(--ink); margin-top:10px; padding-top:10px; }
   #ekps-root .cart-totals .ct-row { display:flex; justify-content:space-between; font-size:13px; padding:3px 0; }
   #ekps-root .cart-totals .ct-grand { font-family:'Sora'; font-weight:800; font-size:18px; color: var(--green); }
-  #ekps-root .po-line { display:grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap:8px; align-items:center; margin-bottom:8px; }
+  #ekps-root .po-line { display:grid; grid-template-columns: 2fr .9fr .8fr 1fr 1fr auto; gap:8px; align-items:center; margin-bottom:8px; }
+  /* ---- Size-wise (variant) stock UI ---- */
+  #ekps-root .size-chips { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
+  #ekps-root .size-chip { display:inline-flex; gap:5px; align-items:center; font-size:10.5px; padding:2px 7px; border-radius:6px; border:1px solid var(--border-strong); background:#fff; font-family:'IBM Plex Mono'; font-weight:600; }
+  #ekps-root .size-chip b { font-family:'Inter'; font-weight:700; }
+  #ekps-root .size-chip.ok { background:var(--green-bg); border-color:#CFE9D9; color:var(--green); }
+  #ekps-root .size-chip.low { background:var(--amber-bg); border-color:#EBD9A6; color:var(--amber); }
+  #ekps-root .size-chip.out { background:var(--rust-bg); border-color:#EAD0C6; color:var(--rust); }
+  #ekps-root .size-badge { font-size:10px; font-weight:700; background:#EDE9F5; color:var(--ink-2); border-radius:5px; padding:1px 6px; margin-left:4px; }
+  #ekps-root .size-grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(78px,1fr)); gap:8px; }
+  #ekps-root .size-cell { display:flex; flex-direction:column; gap:3px; font-size:11px; font-weight:700; color:var(--ink); }
+  #ekps-root .size-cell small { font-weight:500; color:var(--slate); }
+  #ekps-root .size-cell input { width:100%; padding:7px 4px; border:1px solid var(--border-strong); border-radius:7px; text-align:center; font-family:'IBM Plex Mono'; font-size:13px; }
+  #ekps-root .cls-pick { display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:4px 10px; border:1px solid var(--border-strong); border-radius:20px; background:#fff; cursor:pointer; margin:0 6px 6px 0; }
+  #ekps-root .cls-pick input { accent-color: var(--saffron-dark); }
+  #ekps-root .preset-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  #ekps-root .pos-quick { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center; font-size:11.5px; color:var(--slate); }
+  #ekps-root .pos-item-card .size-chips { margin-top:6px; }
+  #ekps-root .pos-item-card .pi-sku { font-size:10px; color:var(--slate); font-family:'IBM Plex Mono'; margin-top:2px; }
+  #ekps-root .kit-row { display:grid; grid-template-columns: auto 1fr 90px 64px 64px; gap:8px; align-items:center; padding:8px 0; border-bottom:1px dashed var(--border); font-size:12.5px; }
+  #ekps-root .kit-row select, #ekps-root .kit-row input[type=number] { padding:5px 6px; border:1px solid var(--border-strong); border-radius:6px; font-size:12px; width:100%; }
   #ekps-root .vendor-card { border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-bottom:10px; background:#fff; }
   #ekps-root .vendor-card .vc-name { font-weight:700; font-size:13.5px; }
   #ekps-root .vendor-card .vc-meta { font-size:11.5px; color:var(--slate); margin-top:3px; line-height:1.5; }
@@ -783,6 +809,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
   let editingItemId = null;
   let inventorySubView = 'dashboard'; // dashboard | items | vendors | billing | log | reports
   let inventoryQ = '';
+  let inventoryCat = 'all';
   let stockPickedItemId = null;
 
   // --- Vendor & Purchase Management state ---
@@ -797,6 +824,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
   let salesInvoices = [];
   let posCart = [];
   let posQ = '';
+  let posCat = 'all';
   let posCustomerType = 'walkin'; // walkin | student
   let posCustomerName = '';
   let posCustomerPhone = '';
@@ -1021,7 +1049,62 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     const stock = itemStock(item.id);
     if (stock <= 0) return 'Out';
     if (stock <= (item.reorderLevel||0)) return 'Low';
+    // size-wise items: agar koi ek size bhi reorder level par/niche hai to Low dikhao
+    if (itemHasSizes(item) && itemSizes(item).some(sz=> itemSizeStock(item.id, sz) <= (item.reorderLevel||0))) return 'Low';
     return 'InStock';
+  }
+
+  // ---------- Size-wise (variant) stock helpers ----------
+  // Item me optional `sizes: ['S','M','L'...]` hota hai aur har stock transaction me optional `size`.
+  // Bina size wale purane items/transactions pehle ki tarah hi chalte hain.
+  function itemSizes(item){ return (item && Array.isArray(item.sizes)) ? item.sizes.filter(x=>x!=='' && x!=null).map(String) : []; }
+  function itemHasSizes(item){ return itemSizes(item).length > 0; }
+  function itemSizeStock(itemId, size){
+    const sz = size || '';
+    return inventoryTxns.filter(t=>t.itemId===itemId && (t.size||'')===sz).reduce((a,t)=> a + (t.type==='in' ? t.qty : -t.qty), 0);
+  }
+  // POS/sale ke liye available stock: sized item => us size ka stock, warna total stock
+  function posStockOf(item, size){ return itemHasSizes(item) ? itemSizeStock(item.id, size) : itemStock(item.id); }
+  function parseSizes(str){
+    const out = [];
+    String(str||'').split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean).forEach(x=>{ if (!out.includes(x)) out.push(x); });
+    return out;
+  }
+  const SKU_PREFIX = { 'Uniform':'UNI', 'Books / Copy':'BK', 'Stationery':'STN', 'Sports':'SPT', 'Furniture':'FUR', 'Other':'ITM' };
+  function autoSku(cat, id){ return (SKU_PREFIX[cat]||'ITM') + '-' + String(id).padStart(4,'0'); }
+  // Barcode / SKU scan: "UNI-0003" ya size ke saath "UNI-0003-M"
+  function findItemByCode(raw){
+    const c = (raw||'').trim().toLowerCase();
+    if (!c) return null;
+    for (const i of inventoryItems){
+      const sku = (i.sku||'').toLowerCase();
+      if (!sku) continue;
+      if (c === sku) return { item:i, size:'' };
+      if (itemHasSizes(i)) for (const sz of itemSizes(i)) if (c === sku + '-' + sz.toLowerCase()) return { item:i, size:sz };
+    }
+    return null;
+  }
+  function sizeChipsHtml(item){
+    if (!itemHasSizes(item)) return '';
+    const lvl = item.reorderLevel||0;
+    let h = itemSizes(item).map(sz=>{
+      const st = itemSizeStock(item.id, sz);
+      const cls = st<=0 ? 'out' : (st<=lvl ? 'low' : 'ok');
+      return `<span class="size-chip ${cls}"><b>${esc(sz)}</b>${st}</span>`;
+    }).join('');
+    const loose = itemSizeStock(item.id, '');
+    if (loose !== 0) h += `<span class="size-chip low"><b>Bina size</b>${loose}</span>`;
+    return `<div class="size-chips">${h}</div>`;
+  }
+  // Reorder level par/niche aane wale sabhi item-size combos (auto purchase suggestion ke liye)
+  function lowStockRows(){
+    const rows = [];
+    inventoryItems.forEach(i=>{
+      const lvl = i.reorderLevel||0;
+      if (itemHasSizes(i)) itemSizes(i).forEach(sz=>{ const st = itemSizeStock(i.id, sz); if (st <= lvl) rows.push({ item:i, size:sz, stock:st }); });
+      else { const st = itemStock(i.id); if (st <= lvl) rows.push({ item:i, size:'', stock:st }); }
+    });
+    return rows;
   }
 
   // ---------- Vendor & Purchase helpers ----------
@@ -1043,10 +1126,10 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
   function invoiceReceived(inv){ return inv.amountReceived!=null ? inv.amountReceived : invoiceTotal(inv); }
   function invoiceDue(inv){ return Math.max(0, invoiceTotal(inv) - invoiceReceived(inv)); }
   // returned qty so far for an item within a given invoice
-  function invoiceReturnedQty(invId, itemId){
-    return inventoryTxns.filter(t=> t.source==='return' && t.refId===invId && t.itemId===itemId).reduce((a,t)=>a+t.qty,0);
+  function invoiceReturnedQty(invId, itemId, size){
+    return inventoryTxns.filter(t=> t.source==='return' && t.refId===invId && t.itemId===itemId && (size===undefined || (t.size||'')===(size||''))).reduce((a,t)=>a+t.qty,0);
   }
-  function invoiceReturnableQty(inv, it){ return Math.max(0, it.qty - invoiceReturnedQty(inv.id, it.itemId)); }
+  function invoiceReturnableQty(inv, it){ return Math.max(0, it.qty - invoiceReturnedQty(inv.id, it.itemId, it.size||'')); }
 
   // ================== MODULE 1: Local-First Caching (IndexedDB) ==================
   function idbOpen(){
@@ -1661,7 +1744,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
       </div>`;
 
     const close = ()=>{ modalRoot.innerHTML=''; };
-    document.getElementById('ekps-pass-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-pass-bg') close(); });
     document.getElementById('ekps-pass-close').addEventListener('click', close);
     document.getElementById('ekps-pass-cancel').addEventListener('click', close);
     
@@ -1889,6 +1971,19 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
   }
 
   // ---------- FEE COLLECTION ----------
+  // Fee Collection: student select hone par preview (Father, Mobile, Due Till Current Month, Rest Due)
+  function collectPickPreviewHTML(s){
+    const rest = totalDue(s) - totalPaid(s.id);
+    const dueNow = dueTillCurrentMonth(s);
+    return `<div class="pp-head"><b>${esc(s.name)}</b> &middot; Class ${esc(s.cls)}</div>
+      <div class="pp-grid">
+        <div><span>Father's Name</span><b>${s.fatherName ? esc(s.fatherName) : '—'}</b></div>
+        <div><span>Mobile No.</span><b>${s.mobNo ? esc(s.mobNo) : '—'}</b></div>
+        <div><span>Due Till ${esc(currentMonthName())} (Current)</span><b class="${dueNow>0?'pp-due':'pp-clear'}">${fmt(dueNow)}</b></div>
+        <div><span>Rest Due (Full Session)</span><b class="${rest>0?'pp-due':'pp-clear'}">${fmt(rest)}</b></div>
+      </div>`;
+  }
+
   function renderCollect(){
     contentEl.innerHTML = `
       <div class="two-col">
@@ -1940,9 +2035,8 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
       if (ps) {
         pickedId = ps.id;
         input.value = `${ps.id} — ${ps.name} (${ps.cls})`;
-        const due = totalDue(ps), paid = totalPaid(ps.id), rest = due-paid;
         preview.className = 'pick-preview show';
-        preview.innerHTML = `<b>${esc(ps.name)}</b> &middot; Class ${esc(ps.cls)} &middot; Rest Due: <b>${fmt(rest)}</b>`;
+        preview.innerHTML = collectPickPreviewHTML(ps);
       }
       collectPrefillId = null;
     }
@@ -1953,9 +2047,8 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         const s = students.find(x=>x.id===parseInt(m[1]));
         if (s) {
           pickedId = s.id;
-          const due = totalDue(s), paid = totalPaid(s.id), rest = due-paid;
           preview.className = 'pick-preview show';
-          preview.innerHTML = `<b>${esc(s.name)}</b> &middot; Class ${esc(s.cls)} &middot; Rest Due: <b>${fmt(rest)}</b>`;
+          preview.innerHTML = collectPickPreviewHTML(s);
           return;
         }
       }
@@ -2044,7 +2137,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     const close = ()=>{ modalRoot.innerHTML=''; };
     document.getElementById('ekps-ee-close').addEventListener('click', close);
     document.getElementById('ekps-ee-cancel').addEventListener('click', close);
-    document.getElementById('ekps-ee-bg').addEventListener('click', ev=>{ if (ev.target.id==='ekps-ee-bg') close(); });
     document.getElementById('ekps-ee-save').addEventListener('click', ()=>{
       const val = document.getElementById('ee-student').value.trim();
       const s = students.find(x=>stLabel(x)===val) || students.find(x=>String(x.id)===val.split('—')[0].trim());
@@ -2121,7 +2213,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         </div>
       </div>`;
     const close = ()=>{ modalRoot.innerHTML=''; editingStudentId=null; };
-    document.getElementById('ekps-modal-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-modal-bg') close(); });
     document.getElementById('ekps-modal-close').addEventListener('click', close);
     document.getElementById('ekps-modal-cancel').addEventListener('click', close);
     document.getElementById('f-photo').addEventListener('change', (e)=>{
@@ -2224,7 +2315,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         </div>`;
 
       const close = ()=>{ modalRoot.innerHTML=''; };
-      document.getElementById('ekps-bill-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-bill-bg') close(); });
       document.getElementById('ekps-bill-close').addEventListener('click', close);
       document.getElementById('ekps-bill-done').addEventListener('click', ()=>{ close(); renderStudents(); });
 
@@ -2337,7 +2427,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
       </div>`;
 
     const close = ()=>{ modalRoot.innerHTML=''; };
-    document.getElementById('ekps-bb-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-bb-bg') close(); });
     document.getElementById('ekps-bb-close').addEventListener('click', close);
     document.getElementById('ekps-bb-cancel').addEventListener('click', close);
 
@@ -2551,7 +2640,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
       </div>`;
 
     const close = ()=>{ modalRoot.innerHTML=''; editingAdmissionId=null; };
-    document.getElementById('ekps-adm-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-adm-bg') close(); });
     document.getElementById('ekps-adm-close').addEventListener('click', close);
     document.getElementById('ekps-adm-cancel').addEventListener('click', close);
     document.getElementById('a-photo').addEventListener('change', (e)=>{
@@ -2636,7 +2724,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         </div>
       </div>`;
     const close = ()=>{ modalRoot.innerHTML=''; };
-    document.getElementById('ekps-admprint-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-admprint-bg') close(); });
     document.getElementById('ekps-admprint-close').addEventListener('click', close);
     document.getElementById('ekps-admprint-later').addEventListener('click', close);
     document.getElementById('ekps-admprint-now').addEventListener('click', ()=>{ printAdmissionForm(admissionId); close(); });
@@ -2774,7 +2861,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         </div>
       </div>`;
     const close = ()=>{ modalRoot.innerHTML=''; };
-    document.getElementById('ekps-cfm-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-cfm-bg') close(); });
     document.getElementById('ekps-cfm-close').addEventListener('click', close);
     document.getElementById('ekps-cfm-cancel').addEventListener('click', close);
     document.getElementById('ekps-cfm-save').addEventListener('click', ()=>{
@@ -2897,7 +2983,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         </div>
       </div>`;
     const close = ()=>{ modalRoot.innerHTML=''; editingRouteId=null; };
-    document.getElementById('ekps-rt-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-rt-bg') close(); });
     document.getElementById('ekps-rt-close').addEventListener('click', close);
     document.getElementById('ekps-rt-cancel').addEventListener('click', close);
     document.getElementById('ekps-rt-save').addEventListener('click', ()=>{
@@ -3165,21 +3250,43 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
   // ---------- INVENTORY MANAGEMENT ----------
   function itemModal(){
     const editing = editingItemId != null;
-    const it = editing ? inventoryItems.find(x=>x.id===editingItemId) : {id:nextItemId(), name:'', category:'Uniform', unit:'Pcs', unitPrice:0, reorderLevel:5};
+    const it = editing ? inventoryItems.find(x=>x.id===editingItemId) : {id:nextItemId(), name:'', category:'Uniform', unit:'Pcs', unitPrice:0, costPrice:0, reorderLevel:5, sizes:[], sku:'', classes:[]};
+    let curSizes = itemSizes(it).slice();
+    const classSel = new Set(Array.isArray(it.classes) ? it.classes : []);
     modalRoot.innerHTML = `
       <div class="modal-backdrop" id="ekps-it-bg">
-        <div class="modal">
+        <div class="modal" style="width:640px;">
           <div class="modal-head"><h3>${editing?'Edit Item':'Add Inventory Item'}</h3><div class="icon-btn" id="ekps-it-close">✕</div></div>
           <div class="modal-body">
-            <div class="field"><label>Item Name</label><input type="text" id="it-name" value="${esc(it.name)}" placeholder="e.g. Uniform Shirt - Size M"/></div>
+            <div class="field"><label>Item Name</label><input type="text" id="it-name" value="${esc(it.name)}" placeholder="e.g. School Uniform Shirt / Class 3 Maths Book"/></div>
             <div class="form-grid cols-4">
               <div class="field" style="grid-column: span 2;"><label>Category</label>
                 <select id="it-cat">${['Uniform','Books / Copy','Stationery','Sports','Furniture','Other'].map(c=>`<option value="${c}" ${c===it.category?'selected':''}>${c}</option>`).join('')}</select>
               </div>
               <div class="field"><label>Unit</label><input type="text" id="it-unit" value="${esc(it.unit)}" placeholder="Pcs/Box"/></div>
-              <div class="field"><label>Reorder Level</label><input type="number" id="it-reorder" value="${it.reorderLevel}"/></div>
+              <div class="field"><label>Reorder Level (har size ka)</label><input type="number" id="it-reorder" value="${it.reorderLevel}"/></div>
             </div>
-            <div class="field"><label>Unit Price (₹)</label><input type="number" id="it-price" value="${it.unitPrice}"/></div>
+            <div class="form-grid">
+              <div class="field"><label>Sale Price (₹)</label><input type="number" id="it-price" value="${it.unitPrice}"/></div>
+              <div class="field"><label>Purchase / Cost Price (₹)</label><input type="number" id="it-cost" value="${it.costPrice||0}"/></div>
+              <div class="field"><label>SKU / Barcode</label><input type="text" id="it-sku" value="${esc(it.sku||'')}" placeholder="Khali = auto ban jayega"/></div>
+            </div>
+            <div class="field">
+              <label>Sizes (variants) — comma se alag karein; size nahi hai to khali chhodein</label>
+              <input type="text" id="it-sizes" value="${esc(curSizes.join(', '))}" placeholder="e.g. S, M, L, XL  ya  22, 24, 26, 28"/>
+              <div class="preset-row">
+                <span class="btn btn-ghost btn-sm" data-size-preset="letters">S – XXL</span>
+                <span class="btn btn-ghost btn-sm" data-size-preset="numbers">20 – 40 (even)</span>
+                <span class="btn btn-ghost btn-sm" data-size-preset="shoes">1 – 10</span>
+                <span class="btn btn-ghost btn-sm" data-size-preset="none">Bina Size</span>
+              </div>
+            </div>
+            <div id="it-open-wrap"></div>
+            <div class="field">
+              <label>Class Kit — ye item kin classes ke students ke liye hai (optional)</label>
+              <div>${CLASS_ORDER.map(c=>`<label class="cls-pick"><input type="checkbox" data-it-cls="${esc(c)}" ${classSel.has(c)?'checked':''}/> ${esc(c)}</label>`).join('')}</div>
+              <div class="hint">Billing me student select karke "Class Kit add karein" dabane par us class ka poora set (books, copy, uniform) ek click me cart me aa jayega.</div>
+            </div>
           </div>
           <div class="modal-foot">
             <span class="btn btn-ghost" id="ekps-it-cancel">Cancel</span>
@@ -3188,23 +3295,63 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         </div>
       </div>`;
     const close = ()=>{ modalRoot.innerHTML=''; editingItemId=null; };
-    document.getElementById('ekps-it-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-it-bg') close(); });
+    const drawOpen = ()=>{
+      const wrap = document.getElementById('it-open-wrap');
+      if (!wrap) return;
+      if (editing) {
+        wrap.innerHTML = itemHasSizes(it) ? `<div class="field"><label>Abhi ka size-wise stock</label>${sizeChipsHtml(it)}<div class="hint">Stock badhane/ghatane ke liye "Stock In / Out" ya Purchase Order use karein.</div></div>` : '';
+        return;
+      }
+      const old = {};
+      wrap.querySelectorAll('[data-open-size]').forEach(el=>{ old[el.dataset.openSize] = el.value; });
+      const oq = document.getElementById('it-open-qty'); const oldQty = oq ? oq.value : '';
+      wrap.innerHTML = curSizes.length
+        ? `<div class="field"><label>Opening Stock (size-wise)</label><div class="size-grid">${curSizes.map(sz=>`<div class="size-cell"><span>${esc(sz)}</span><input type="number" min="0" data-open-size="${esc(sz)}" value="${esc(old[sz]||'')}" placeholder="0"/></div>`).join('')}</div></div>`
+        : `<div class="field"><label>Opening Stock</label><input type="number" min="0" id="it-open-qty" value="${esc(oldQty)}" placeholder="0"/></div>`;
+    };
+    drawOpen();
+    const sizesEl = document.getElementById('it-sizes');
+    sizesEl.addEventListener('input', ()=>{ curSizes = parseSizes(sizesEl.value); drawOpen(); });
+    modalRoot.querySelectorAll('[data-size-preset]').forEach(el=>el.addEventListener('click', ()=>{
+      const k = el.dataset.sizePreset;
+      const v = k==='letters' ? ['S','M','L','XL','XXL'] : k==='numbers' ? [20,22,24,26,28,30,32,34,36,38,40] : k==='shoes' ? [1,2,3,4,5,6,7,8,9,10] : [];
+      sizesEl.value = v.join(', ');
+      curSizes = parseSizes(sizesEl.value); drawOpen();
+    }));
     document.getElementById('ekps-it-close').addEventListener('click', close);
     document.getElementById('ekps-it-cancel').addEventListener('click', close);
     document.getElementById('ekps-it-save').addEventListener('click', ()=>{
       const name = document.getElementById('it-name').value.trim();
       if (!name) { toast('Item ka naam daalein'); return; }
-      const rec = {
-        id: it.id, name,
-        category: document.getElementById('it-cat').value,
+      const sizes = parseSizes(sizesEl.value);
+      if (editing) {
+        const blocked = itemSizes(it).filter(sz=> !sizes.includes(sz) && itemSizeStock(it.id, sz) !== 0);
+        if (blocked.length) { toast('Size hata nahi sakte jab tak stock zero na ho: ' + blocked.join(', ')); return; }
+      }
+      const category = document.getElementById('it-cat').value;
+      let sku = document.getElementById('it-sku').value.trim();
+      if (!sku) sku = autoSku(category, it.id);
+      if (inventoryItems.some(x=>x.id!==it.id && (x.sku||'').toLowerCase()===sku.toLowerCase())) { toast('Ye SKU / Barcode kisi aur item me use ho chuka hai'); return; }
+      const classes = Array.from(modalRoot.querySelectorAll('[data-it-cls]')).filter(el=>el.checked).map(el=>el.dataset.itCls);
+      const rec = Object.assign({}, it, {
+        id: it.id, name, category, sku, sizes, classes,
         unit: document.getElementById('it-unit').value.trim() || 'Pcs',
         unitPrice: parseFloat(document.getElementById('it-price').value)||0,
+        costPrice: parseFloat(document.getElementById('it-cost').value)||0,
         reorderLevel: parseFloat(document.getElementById('it-reorder').value)||0,
         createdBy: editing ? (it.createdBy || currentUserRole) : currentUserRole,
-      };
+      });
+      let openTxns = [];
+      if (!editing) {
+        const d = todayISO();
+        const addOpen = (size, qty)=>{ if (qty > 0) openTxns.push({ id: Date.now()+Math.floor(Math.random()*100000), itemId: rec.id, type:'in', qty, date:d, size, note:'Opening stock', source:'opening', createdBy: currentUserRole }); };
+        if (sizes.length) modalRoot.querySelectorAll('[data-open-size]').forEach(el=> addOpen(el.dataset.openSize, parseFloat(el.value)||0));
+        else { const oq = document.getElementById('it-open-qty'); addOpen('', oq ? (parseFloat(oq.value)||0) : 0); }
+      }
       if (editing) inventoryItems = inventoryItems.map(x=>x.id===rec.id?rec:x);
       else inventoryItems.push(rec);
       saveInventoryItems();
+      if (openTxns.length) { openTxns.forEach(t=>inventoryTxns.push(t)); saveInventoryTxns(); }
       toast(editing?'Item updated':'Item added');
       close();
       renderInventory();
@@ -3214,7 +3361,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
   function stockModal(){
     modalRoot.innerHTML = `
       <div class="modal-backdrop" id="ekps-sk-bg">
-        <div class="modal">
+        <div class="modal" style="width:600px;">
           <div class="modal-head"><h3>Stock In / Out Entry</h3><div class="icon-btn" id="ekps-sk-close">✕</div></div>
           <div class="modal-body">
             <div class="field"><label>Item</label>
@@ -3229,8 +3376,9 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
                   <option value="out">Stock Out (Issue / Sale)</option>
                 </select>
               </div>
-              <div class="field"><label>Quantity</label><input type="number" id="sk-qty" min="1" placeholder="e.g. 10"/></div>
+              <div class="field" id="sk-qty-wrap"><label>Quantity</label><input type="number" id="sk-qty" min="1" placeholder="e.g. 10"/></div>
             </div>
+            <div id="sk-size-wrap"></div>
             <div class="form-grid">
               <div class="field"><label>Date</label><input type="date" id="sk-date" value="${todayISO()}"/></div>
               <div class="field"><label>Issued To / Note (optional)</label><input type="text" id="sk-note" placeholder="e.g. Class 3 student name"/></div>
@@ -3243,21 +3391,44 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         </div>
       </div>`;
     const close = ()=>{ modalRoot.innerHTML=''; };
-    document.getElementById('ekps-sk-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-sk-bg') close(); });
     document.getElementById('ekps-sk-close').addEventListener('click', close);
     document.getElementById('ekps-sk-cancel').addEventListener('click', close);
-    if (stockPickedItemId) document.getElementById('sk-item').value = stockPickedItemId;
+    const itemSel = document.getElementById('sk-item');
+    const curItem = ()=> inventoryItems.find(i=>i.id===parseInt(itemSel.value));
+    const sizeKeys = (item)=>{ const k = itemSizes(item).slice(); if (itemSizeStock(item.id,'') !== 0) k.push(''); return k; };
+    const syncItem = ()=>{
+      const item = curItem();
+      const sized = itemHasSizes(item);
+      document.getElementById('sk-qty-wrap').style.display = sized ? 'none' : '';
+      document.getElementById('sk-size-wrap').innerHTML = sized
+        ? `<div class="field"><label>Size-wise Quantity — jis size ka daalna hai sirf wahi bharein</label><div class="size-grid">${sizeKeys(item).map(sz=>`<div class="size-cell"><span>${sz===''?'Bina size':esc(sz)} <small>(${itemSizeStock(item.id, sz)})</small></span><input type="number" min="0" data-sk-size="${esc(sz)}" placeholder="0"/></div>`).join('')}</div></div>`
+        : '';
+    };
+    itemSel.addEventListener('change', syncItem);
+    if (stockPickedItemId) itemSel.value = stockPickedItemId;
+    syncItem();
     document.getElementById('ekps-sk-save').addEventListener('click', ()=>{
-      const itemId = parseInt(document.getElementById('sk-item').value);
+      const itemId = parseInt(itemSel.value);
+      const item = curItem();
       const type = document.getElementById('sk-type').value;
-      const qty = parseFloat(document.getElementById('sk-qty').value);
       const date = document.getElementById('sk-date').value;
       const note = document.getElementById('sk-note').value.trim();
-      if (!itemId) { toast('Item select karein'); return; }
-      if (!qty || qty<=0) { toast('Sahi Quantity daalein'); return; }
+      if (!itemId || !item) { toast('Item select karein'); return; }
       if (!date) { toast('Date daalein'); return; }
-      if (type==='out' && itemStock(itemId) < qty) { toast('Itna stock available nahi hai'); return; }
-      inventoryTxns.push({ id: Date.now(), itemId, type, qty, date, note, createdBy: currentUserRole });
+      if (itemHasSizes(item)) {
+        const lines = Array.from(modalRoot.querySelectorAll('[data-sk-size]')).map(el=>({ size: el.dataset.skSize, qty: parseFloat(el.value)||0 })).filter(l=>l.qty>0);
+        if (!lines.length) { toast('Kam se kam ek size ki quantity daalein'); return; }
+        if (type==='out') {
+          const bad = lines.find(l=> itemSizeStock(itemId, l.size) < l.qty);
+          if (bad) { toast(`Size ${bad.size||'(bina size)'} ka itna stock available nahi hai`); return; }
+        }
+        lines.forEach(l=> inventoryTxns.push({ id: Date.now()+Math.floor(Math.random()*100000), itemId, type, qty:l.qty, date, size:l.size, note, createdBy: currentUserRole }));
+      } else {
+        const qty = parseFloat(document.getElementById('sk-qty').value);
+        if (!qty || qty<=0) { toast('Sahi Quantity daalein'); return; }
+        if (type==='out' && itemStock(itemId) < qty) { toast('Itna stock available nahi hai'); return; }
+        inventoryTxns.push({ id: Date.now(), itemId, type, qty, date, note, createdBy: currentUserRole });
+      }
       saveInventoryTxns();
       toast('Stock entry saved');
       close();
@@ -3391,6 +3562,25 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
           </tr>`).join('')}</tbody></table>
         </div>
       </div>` : ''}`;
+    (function(){
+      const rows = lowStockRows();
+      if (!rows.length) return;
+      body.insertAdjacentHTML('beforeend', `
+      <div class="panel" style="margin-top:16px;">
+        <div class="panel-head"><h3>🛒 Size-wise Reorder Suggestions</h3><span class="btn btn-sm btn-accent" id="dash-auto-reorder">⚡ Auto Purchase Order banayein</span></div>
+        <div class="panel-body" style="padding:0; overflow:auto;">
+          <table class="data"><thead><tr><th>Item</th><th>Size</th><th>Current</th><th>Reorder Level</th><th>Suggested Order Qty</th></tr></thead>
+          <tbody>${rows.map(r=>`<tr>
+            <td style="font-weight:600;">${esc(r.item.name)}</td>
+            <td>${r.size?`<span class="size-badge" style="margin:0;">${esc(r.size)}</span>`:'—'}</td>
+            <td class="mono" style="color:${r.stock<=0?'var(--rust)':'var(--amber)'}; font-weight:700;">${r.stock}</td>
+            <td class="mono">${r.item.reorderLevel||0}</td>
+            <td class="mono">${Math.max((r.item.reorderLevel||0)*2 - r.stock, 1)}</td>
+          </tr>`).join('')}</tbody></table>
+        </div>
+      </div>`);
+      document.getElementById('dash-auto-reorder').addEventListener('click', ()=> poModalPrefilled(rows));
+    })();
     const gb = document.getElementById('dash-goto-billing'); if (gb) gb.addEventListener('click', ()=>{ inventorySubView='billing'; renderInventory(); });
     const gv = document.getElementById('dash-goto-vendors'); if (gv) gv.addEventListener('click', ()=>{ inventorySubView='vendors'; renderInventory(); });
   }
@@ -3398,8 +3588,9 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
   function renderInventoryItems(){
     const body = document.getElementById('ekps-inv-body');
     const q = inventoryQ.trim().toLowerCase();
-    const list = inventoryItems.filter(i=> !q || i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q))
+    const list = inventoryItems.filter(i=> (inventoryCat==='all' || i.category===inventoryCat) && (!q || i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q) || (i.sku||'').toLowerCase().includes(q)))
       .sort((a,b)=> a.name.localeCompare(b.name));
+    const invCats = ['all', ...Array.from(new Set(inventoryItems.map(i=>i.category))).sort()];
     const totalValue = inventoryItems.reduce((a,i)=>a + itemStock(i.id)*i.unitPrice, 0);
     body.innerHTML = `
       <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);">
@@ -3408,7 +3599,8 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         <div class="kpi-card" style="--accent:var(--green)"><div class="kpi-label">Total Stock Value</div><div class="kpi-value">${fmt(totalValue)}</div></div>
       </div>
       <div class="toolbar">
-        <div class="search-wrap">${ICONS.search}<input type="text" id="inv-search" placeholder="Item ya category search karein" value="${esc(inventoryQ)}"/></div>
+        <div class="search-wrap">${ICONS.search}<input type="text" id="inv-search" placeholder="Item, category ya SKU search karein" value="${esc(inventoryQ)}"/></div>
+        <select id="inv-cat-filter">${invCats.map(c=>`<option value="${esc(c)}" ${c===inventoryCat?'selected':''}>${c==='all'?'All Categories':esc(c)}</option>`).join('')}</select>
         <span style="flex:1"></span>
         <span class="btn btn-ghost" id="inv-stock-btn">↕ Stock In / Out</span>
         <span class="btn btn-accent" id="inv-new-item">+ Add Item</span>
@@ -3421,7 +3613,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
               ${list.length ? list.map(i=>{
                 const stock = itemStock(i.id), st = itemStatus(i);
                 return `<tr data-created-by="${i.createdBy||'admin'}">
-                  <td style="font-weight:600;">${esc(i.name)} ${i.createdBy==='user'?'<span class="entry-badge-user">Staff Entry</span>':''}</td>
+                  <td style="font-weight:600;">${esc(i.name)} ${i.createdBy==='user'?'<span class="entry-badge-user">Staff Entry</span>':''}${i.sku?`<div class="pi-sku" style="font-size:10.5px; font-weight:500; color:var(--slate); font-family:'IBM Plex Mono';">${esc(i.sku)}</div>`:''}${sizeChipsHtml(i)}</td>
                   <td><span class="cls-chip">${esc(i.category)}</span></td>
                   <td>${esc(i.unit)}</td>
                   <td class="mono">${fmt(i.unitPrice)}</td>
@@ -3429,6 +3621,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
                   <td class="mono">${fmt(stock*i.unitPrice)}</td>
                   <td><span class="status-badge status-${st}">${st==='InStock'?'In Stock':st}</span></td>
                   <td><div class="row-actions">
+                    <div class="icon-btn" data-inv-stock="${i.id}" title="Stock In / Out">↕</div>
                     <div class="icon-btn" data-inv-damage="${i.id}" title="Mark Damaged">⚠</div>
                     <div class="icon-btn" data-inv-edit="${i.id}" title="Edit">${ICONS.edit}</div>
                     ${isAdmin() ? `<div class="icon-btn js-del-btn" data-inv-del="${i.id}" title="Delete">${ICONS.trash}</div>` : ''}
@@ -3439,7 +3632,11 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
           </table>
         </div>
       </div>`;
-    document.getElementById('inv-search').addEventListener('input', e=>{ inventoryQ = e.target.value; renderInventoryItems(); });
+    document.getElementById('inv-search').addEventListener('input', e=>{
+      inventoryQ = e.target.value; const pos = e.target.selectionStart; renderInventoryItems();
+      const el = document.getElementById('inv-search'); if (el) { el.focus(); try { el.setSelectionRange(pos,pos); } catch(err){} }
+    });
+    document.getElementById('inv-cat-filter').addEventListener('change', e=>{ inventoryCat = e.target.value; renderInventoryItems(); });
     document.getElementById('inv-new-item').addEventListener('click', ()=>{ editingItemId=null; itemModal(); });
     document.getElementById('inv-stock-btn').addEventListener('click', ()=>{
       if (!inventoryItems.length) { toast('Pehle koi item add karein'); return; }
@@ -3448,6 +3645,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     });
     body.querySelectorAll('[data-inv-edit]').forEach(el=> el.addEventListener('click', ()=>{ editingItemId=parseInt(el.dataset.invEdit); itemModal(); }));
     body.querySelectorAll('[data-inv-damage]').forEach(el=> el.addEventListener('click', ()=>{ damageModal(parseInt(el.dataset.invDamage)); }));
+    body.querySelectorAll('[data-inv-stock]').forEach(el=> el.addEventListener('click', ()=>{ stockPickedItemId = parseInt(el.dataset.invStock); stockModal(); }));
     body.querySelectorAll('[data-inv-del]').forEach(el=> el.addEventListener('click', ()=>{
       if(!isAdmin()){ toast('Access Denied: Item delete karne ki permission sirf Admin ko hai'); return; }
       if(!confirm('Ye item delete karein? Iska stock history bhi hat jayega.')) return;
@@ -3479,7 +3677,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
                 const badgeStatus = t.source==='damage' ? 'Out' : (t.type==='in'?'InStock':'Due');
                 return `<tr data-created-by="${t.createdBy||'admin'}">
                   <td>${fmtDate(t.date)}</td>
-                  <td style="font-weight:600;">${esc(item?item.name:'Deleted Item')} ${t.createdBy==='user'?'<span class="entry-badge-user">Staff Entry</span>':''}</td>
+                  <td style="font-weight:600;">${esc(item?item.name:'Deleted Item')}${t.size?` <span class="size-badge">${esc(t.size)}</span>`:''} ${t.createdBy==='user'?'<span class="entry-badge-user">Staff Entry</span>':''}</td>
                   <td><span class="status-badge status-${badgeStatus}">${label}</span></td>
                   <td class="mono">${t.qty}</td>
                   <td>${esc(t.note||'—')}</td>
@@ -3531,7 +3729,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         </div>
       </div>`;
     const close = ()=>{ modalRoot.innerHTML=''; editingVendorId=null; };
-    document.getElementById('ekps-vd-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-vd-bg') close(); });
     document.getElementById('ekps-vd-close').addEventListener('click', close);
     document.getElementById('ekps-vd-cancel').addEventListener('click', close);
     document.getElementById('ekps-vd-save').addEventListener('click', ()=>{
@@ -3554,9 +3751,24 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     });
   }
 
+  function poDefaultRow(item){
+    return { itemId: item?item.id:null, size: (item && itemHasSizes(item)) ? itemSizes(item)[0] : '', qty:1, price: item ? (item.costPrice || item.unitPrice) : 0 };
+  }
+  function poSizeSelectHtml(r, idx){
+    const itm = inventoryItems.find(i=>i.id===r.itemId);
+    if (!itemHasSizes(itm)) return '<span></span>';
+    return `<select data-po-size="${idx}">${itemSizes(itm).map(sz=>`<option value="${esc(sz)}" ${sz===r.size?'selected':''}>${esc(sz)}</option>`).join('')}</select>`;
+  }
   function poModal(){
-    poDraftItems = [{ itemId: inventoryItems[0]?inventoryItems[0].id:null, qty:1, price: inventoryItems[0]?inventoryItems[0].unitPrice:0 }];
+    poDraftItems = [poDefaultRow(inventoryItems[0])];
     poDraftVendorId = vendors[0] ? vendors[0].id : null;
+    renderPOModalBody();
+  }
+  // Low-stock items/sizes se automatic Purchase Order draft
+  function poModalPrefilled(rows){
+    if (!vendors.length) { toast('Pehle ek Vendor add karein'); return; }
+    poDraftItems = rows.map(r=>({ itemId:r.item.id, size:r.size||'', qty: Math.max((r.item.reorderLevel||0)*2 - r.stock, 1), price: r.item.costPrice || r.item.unitPrice }));
+    poDraftVendorId = vendors[0].id;
     renderPOModalBody();
   }
   function renderPOModalBody(){
@@ -3579,6 +3791,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
               ${poDraftItems.map((r,idx)=>`
                 <div class="po-line" data-po-row="${idx}">
                   <select data-po-item="${idx}">${inventoryItems.map(i=>`<option value="${i.id}" ${i.id===r.itemId?'selected':''}>${esc(i.name)}</option>`).join('')}</select>
+                  ${poSizeSelectHtml(r, idx)}
                   <input type="number" min="1" placeholder="Qty" data-po-qty="${idx}" value="${r.qty}"/>
                   <input type="number" min="0" placeholder="Price" data-po-price="${idx}" value="${r.price}"/>
                   <div class="mono" style="text-align:right; font-weight:700;">${fmt((parseFloat(r.qty)||0)*(parseFloat(r.price)||0))}</div>
@@ -3597,17 +3810,20 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         </div>
       </div>`;
     const close = ()=>{ modalRoot.innerHTML=''; };
-    document.getElementById('ekps-po-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-po-bg') close(); });
     document.getElementById('ekps-po-close').addEventListener('click', close);
     document.getElementById('ekps-po-cancel').addEventListener('click', close);
     document.getElementById('po-vendor').addEventListener('change', e=>{ poDraftVendorId = parseInt(e.target.value); });
     document.getElementById('po-add-line').addEventListener('click', ()=>{
-      poDraftItems.push({ itemId: inventoryItems[0]?inventoryItems[0].id:null, qty:1, price: inventoryItems[0]?inventoryItems[0].unitPrice:0 });
+      poDraftItems.push(poDefaultRow(inventoryItems[0]));
       renderPOModalBody();
     });
     modalRoot.querySelectorAll('[data-po-item]').forEach(el=>el.addEventListener('change', e=>{
       const idx = parseInt(el.dataset.poItem); const item = inventoryItems.find(i=>i.id===parseInt(e.target.value));
-      poDraftItems[idx].itemId = item.id; poDraftItems[idx].price = item.unitPrice; renderPOModalBody();
+      poDraftItems[idx].itemId = item.id; poDraftItems[idx].price = item.costPrice || item.unitPrice;
+      poDraftItems[idx].size = itemHasSizes(item) ? itemSizes(item)[0] : ''; renderPOModalBody();
+    }));
+    modalRoot.querySelectorAll('[data-po-size]').forEach(el=>el.addEventListener('change', e=>{
+      poDraftItems[parseInt(el.dataset.poSize)].size = e.target.value;
     }));
     modalRoot.querySelectorAll('[data-po-qty]').forEach(el=>el.addEventListener('input', e=>{
       poDraftItems[parseInt(el.dataset.poQty)].qty = e.target.value;
@@ -3630,14 +3846,14 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
       const cleanItems = poDraftItems.filter(r=>r.itemId && (parseFloat(r.qty)||0)>0);
       if (!cleanItems.length) { toast('Kam se kam ek valid item row daalein'); return; }
       const po = { id: nextPOId(), poNo: nextPONo(), vendorId: poDraftVendorId, date,
-        items: cleanItems.map(r=>({ itemId: r.itemId, qty: parseFloat(r.qty)||0, price: parseFloat(r.price)||0 })),
+        items: cleanItems.map(r=>({ itemId: r.itemId, size: r.size||'', qty: parseFloat(r.qty)||0, price: parseFloat(r.price)||0 })),
         createdBy: currentUserRole };
       purchaseOrders.push(po);
       savePurchaseOrders();
       // AUTOMATION: auto stock-in for every line item, no separate manual step needed
       const vendor = vendors.find(v=>v.id===poDraftVendorId);
       po.items.forEach(it=>{
-        inventoryTxns.push({ id: Date.now()+Math.floor(Math.random()*1000), itemId: it.itemId, type:'in', qty: it.qty, date,
+        inventoryTxns.push({ id: Date.now()+Math.floor(Math.random()*1000), itemId: it.itemId, type:'in', qty: it.qty, date, size: it.size||'',
           note: `Purchase ${po.poNo} — ${vendor?vendor.name:'Vendor'}`, source:'purchase', refId: po.id, createdBy: currentUserRole });
       });
       saveInventoryTxns();
@@ -3717,7 +3933,8 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
   function renderInventoryBilling(){
     const body = document.getElementById('ekps-inv-body');
     const q = posQ.trim().toLowerCase();
-    const items = inventoryItems.filter(i=> !q || i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q))
+    const posCats = ['all', ...Array.from(new Set(inventoryItems.map(i=>i.category))).sort()];
+    const items = inventoryItems.filter(i=> (posCat==='all' || i.category===posCat) && (!q || i.name.toLowerCase().includes(q) || i.category.toLowerCase().includes(q) || (i.sku||'').toLowerCase().includes(q)))
       .sort((a,b)=>a.name.localeCompare(b.name));
     const recentInvoices = salesInvoices.slice().sort((a,b)=>b.id-a.id).slice(0,8);
     const posPickedStudent = posStudentPick ? students.find(x=>x.id===posStudentPick) : null;
@@ -3727,13 +3944,16 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         <div class="panel">
           <div class="panel-head"><h3>Select Items</h3></div>
           <div class="panel-body">
-            <div class="search-wrap" style="margin-bottom:12px;">${ICONS.search}<input type="text" id="pos-search" placeholder="Item search karein" value="${esc(posQ)}"/></div>
+            <div class="search-wrap" style="margin-bottom:12px;">${ICONS.search}<input type="text" id="pos-search" placeholder="Item search ya Barcode / SKU scan karke Enter dabayein" value="${esc(posQ)}"/></div>
+            <div class="subtabs" style="margin-bottom:10px;">${posCats.map(c=>`<div class="subtab ${c===posCat?'active':''}" data-pos-cat="${esc(c)}">${c==='all'?'All':esc(c)}</div>`).join('')}</div>
             <div class="pos-item-grid">
               ${items.length ? items.map(i=>{
                 const stock = itemStock(i.id);
                 return `<div class="pos-item-card ${stock<=0?'out':''}" data-pos-add="${i.id}">
                   <div class="pi-name">${esc(i.name)}</div>
+                  ${i.sku?`<div class="pi-sku">${esc(i.sku)}</div>`:''}
                   <div class="pi-meta"><span>${fmt(i.unitPrice)}</span><span>${stock<=0?'Out of stock':stock+' '+esc(i.unit)}</span></div>
+                  ${sizeChipsHtml(i)}
                 </div>`;
               }).join('') : `<div class="empty-state">Koi item nahi mila</div>`}
             </div>
@@ -3769,10 +3989,11 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
                   <div class="field"><label>Phone</label><input type="text" id="pos-cust-phone" value="${esc(posCustomerPhone)}" placeholder="Optional"/></div>
                 </div>`}
             </div>
+            ${posCustomerType==='student' ? `<div style="margin:2px 0 10px;"><span class="btn btn-sm btn-accent" id="pos-kit-btn">📚 Class Kit add karein (books + uniform)</span></div>` : ''}
             <div id="pos-cart-rows">
               ${posCart.length ? posCart.map((c,idx)=>`
                 <div class="cart-row">
-                  <span class="cr-nm">${esc(c.name)}</span>
+                  <span class="cr-nm">${esc(c.name)}${c.size?`<span class="size-badge">${esc(c.size)}</span>`:''}</span>
                   <input type="number" min="1" class="cr-qty" data-cart-qty="${idx}" value="${c.qty}"/>
                   <span class="cr-price">${fmt(c.price)}</span>
                   <span class="cr-line">${fmt(c.qty*c.price)}</span>
@@ -3782,6 +4003,10 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
             <div class="form-grid" style="grid-template-columns:1fr 1fr; margin-top:10px;">
               <div class="field"><label>Discount (₹)</label><input type="number" min="0" id="pos-discount" value="${posDiscount}"/></div>
               <div class="field"><label>Amount Received (₹)</label><input type="number" min="0" id="pos-received" value="${cartReceived()}"/></div>
+            </div>
+            <div class="pos-quick">Quick:
+              <span class="btn btn-sm btn-ghost" data-pos-quick="full">Poora Paid</span>
+              ${posCustomerType==='student' ? `<span class="btn btn-sm btn-ghost" data-pos-quick="half">Aadha</span><span class="btn btn-sm btn-ghost" data-pos-quick="none">Udhaar (school bill me)</span>` : ''}
             </div>
             <div class="cart-totals">
               <div class="ct-row"><span>Subtotal</span><span>${fmt(cartSubtotal())}</span></div>
@@ -3811,6 +4036,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
                 <td>${esc(v.paymentMode)}</td>
                 <td><div class="row-actions">
                   <span class="btn btn-sm btn-ghost" data-reprint="${v.id}">${ICONS.print} Print</span>
+                  <span class="btn btn-sm btn-ghost" data-wa-inv="${v.id}">📲 WhatsApp</span>
                   <span class="btn btn-sm btn-ghost" data-return-inv="${v.id}">↩ Return</span>
                 </div></td>
               </tr>`; }).join('') : `<tr><td colspan="7"><div class="empty-state">Koi bill nahi bana</div></td></tr>`}
@@ -3819,7 +4045,27 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         </div>
       </div>`;
 
-    document.getElementById('pos-search').addEventListener('input', e=>{ posQ = e.target.value; renderInventoryBilling(); });
+    const posSearchEl = document.getElementById('pos-search');
+    posSearchEl.addEventListener('input', e=>{
+      posQ = e.target.value; const pos = e.target.selectionStart; renderInventoryBilling();
+      const el = document.getElementById('pos-search'); if (el) { el.focus(); try { el.setSelectionRange(pos,pos); } catch(err){} }
+    });
+    // Barcode scanner / SKU type karke Enter: item (aur size) apne aap cart me add
+    posSearchEl.addEventListener('keydown', e=>{
+      if (e.key !== 'Enter') return;
+      const hit = findItemByCode(posSearchEl.value);
+      if (!hit) { toast('Is code ka koi item nahi mila'); return; }
+      if (itemHasSizes(hit.item) && !hit.size) { posQ=''; posSizePickerModal(hit.item.id); return; }
+      if (posAddToCart(hit.item, hit.size, 1)) { posQ = ''; renderInventoryBilling(); const el = document.getElementById('pos-search'); if (el) el.focus(); }
+    });
+    body.querySelectorAll('[data-pos-cat]').forEach(el=>el.addEventListener('click', ()=>{ posCat = el.dataset.posCat; renderInventoryBilling(); }));
+    body.querySelectorAll('[data-pos-quick]').forEach(el=>el.addEventListener('click', ()=>{
+      const k = el.dataset.posQuick;
+      posReceived = k==='full' ? null : (k==='half' ? Math.round(cartTotal()/2) : 0);
+      renderInventoryBilling();
+    }));
+    const kitBtn = document.getElementById('pos-kit-btn'); if (kitBtn) kitBtn.addEventListener('click', posKitModal);
+    body.querySelectorAll('[data-wa-inv]').forEach(el=>el.addEventListener('click', ()=> sendInvoiceWhatsApp(parseInt(el.dataset.waInv))));
     document.getElementById('pos-clear').addEventListener('click', ()=>{ posCart=[]; posDiscount=0; posReceived=null; renderInventoryBilling(); });
     document.getElementById('pos-cust-type').addEventListener('change', e=>{ posCustomerType = e.target.value; posStudentPick=null; renderInventoryBilling(); });
     document.getElementById('pos-pay-mode').addEventListener('change', e=>{ posPaymentMode = e.target.value; });
@@ -3851,14 +4097,16 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
       const item = inventoryItems.find(i=>i.id===id);
       if (!item) return;
       if (itemStock(id) <= 0) { toast('Ye item stock me nahi hai'); return; }
-      const existing = posCart.find(c=>c.itemId===id);
-      if (existing) existing.qty += 1;
-      else posCart.push({ itemId:id, name:item.name, price:item.unitPrice, qty:1, unit:item.unit });
-      renderInventoryBilling();
+      if (itemHasSizes(item)) { posSizePickerModal(id); return; }
+      if (posAddToCart(item, '', 1)) renderInventoryBilling();
     }));
     body.querySelectorAll('[data-cart-qty]').forEach(el=>el.addEventListener('input', e=>{
       const idx = parseInt(el.dataset.cartQty);
-      posCart[idx].qty = Math.max(1, parseFloat(e.target.value)||1);
+      const c = posCart[idx]; const itm = inventoryItems.find(i=>i.id===c.itemId);
+      let v = Math.max(1, parseFloat(e.target.value)||1);
+      const mx = itm ? posStockOf(itm, c.size) : v;
+      if (v > mx) { v = Math.max(1, mx); toast(`Stock me sirf ${mx} bache hain`); }
+      c.qty = v;
       renderInventoryBilling();
     }));
     body.querySelectorAll('[data-cart-remove]').forEach(el=>el.addEventListener('click', ()=>{
@@ -3875,7 +4123,8 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     document.getElementById('pos-generate').addEventListener('click', ()=>{
       if (!posCart.length) { toast('Cart me item add karein'); return; }
       for (const c of posCart) {
-        if (c.qty > itemStock(c.itemId)) { toast(`Utna Stock available nahi hai! (${c.name})`); return; }
+        const it0 = inventoryItems.find(i=>i.id===c.itemId);
+        if (!it0 || c.qty > posStockOf(it0, c.size)) { toast(`Utna Stock available nahi hai! (${c.name}${c.size?' — '+c.size:''})`); return; }
       }
       let customerName = '', studentId = null;
       if (posCustomerType==='student') {
@@ -3883,6 +4132,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         const s = students.find(x=>x.id===posStudentPick);
         customerName = s ? s.name : '';
         studentId = posStudentPick;
+        if (s && s.mobNo && !posCustomerPhone.trim()) posCustomerPhone = s.mobNo;
       } else {
         customerName = posCustomerName.trim() || 'Walk-in Customer';
       }
@@ -3892,7 +4142,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
       const inv = {
         id: nextInvoiceId(), invNo: nextInvoiceNo(), date: todayISO(),
         customerType: posCustomerType, customerName, customerPhone: posCustomerPhone.trim(), studentId,
-        items: posCart.map(c=>({ itemId:c.itemId, name:c.name, unit:c.unit, qty:c.qty, price:c.price })),
+        items: posCart.map(c=>({ itemId:c.itemId, size:c.size||'', name:c.name, unit:c.unit, qty:c.qty, price:c.price })),
         discount: parseFloat(posDiscount)||0, paymentMode: posPaymentMode,
         amountReceived: received, dueBillId: null,
         createdBy: currentUserRole,
@@ -3900,7 +4150,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
       salesInvoices.push(inv);
       // AUTOMATION: auto stock-out for every sold item, no separate manual step needed
       inv.items.forEach(it=>{
-        inventoryTxns.push({ id: Date.now()+Math.floor(Math.random()*1000), itemId: it.itemId, type:'out', qty: it.qty, date: inv.date,
+        inventoryTxns.push({ id: Date.now()+Math.floor(Math.random()*1000), itemId: it.itemId, type:'out', qty: it.qty, date: inv.date, size: it.size||'',
           note: `Sale ${inv.invNo} — ${customerName}`, source:'sale', refId: inv.id, createdBy: currentUserRole });
       });
       saveInventoryTxns();
@@ -3924,6 +4174,122 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     });
   }
 
+  // ---- POS helpers: cart add (size-aware), size picker, class kit, WhatsApp invoice ----
+  function posAddToCart(item, size, qty){
+    const sz = size || '';
+    const stock = posStockOf(item, sz);
+    const ex = posCart.find(c=>c.itemId===item.id && (c.size||'')===sz);
+    const want = (ex ? ex.qty : 0) + qty;
+    if (want > stock) { toast(`Stock kam hai — ${item.name}${sz?' ('+sz+')':''}: sirf ${stock} bache`); return false; }
+    if (ex) ex.qty = want;
+    else posCart.push({ itemId:item.id, size:sz, name:item.name, price:item.unitPrice, qty, unit:item.unit });
+    return true;
+  }
+  function posSizePickerModal(itemId){
+    const item = inventoryItems.find(i=>i.id===itemId);
+    if (!item) return;
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="ekps-pk-bg">
+        <div class="modal" style="width:520px;">
+          <div class="modal-head"><h3>Size chunein — ${esc(item.name)}</h3><div class="icon-btn" id="ekps-pk-close">✕</div></div>
+          <div class="modal-body">
+            <div class="hint" style="margin-bottom:10px;">Rate: <b>${fmt(item.unitPrice)}</b> &middot; Jis size ki quantity chahiye wahi bharein (bracket me bacha hua stock hai).</div>
+            <div class="size-grid">${itemSizes(item).map(sz=>{ const st = itemSizeStock(item.id, sz); return `<div class="size-cell"><span>${esc(sz)} <small>(${st})</small></span><input type="number" min="0" max="${st}" data-pk-size="${esc(sz)}" ${st<=0?'disabled placeholder="Out"':'placeholder="0"'}/></div>`; }).join('')}</div>
+          </div>
+          <div class="modal-foot">
+            <span class="btn btn-ghost" id="ekps-pk-cancel">Cancel</span>
+            <span class="btn btn-accent" id="ekps-pk-add">Add to Cart</span>
+          </div>
+        </div>
+      </div>`;
+    const close = ()=>{ modalRoot.innerHTML=''; };
+    document.getElementById('ekps-pk-close').addEventListener('click', close);
+    document.getElementById('ekps-pk-cancel').addEventListener('click', close);
+    const first = modalRoot.querySelector('[data-pk-size]:not([disabled])'); if (first) first.focus();
+    document.getElementById('ekps-pk-add').addEventListener('click', ()=>{
+      const lines = Array.from(modalRoot.querySelectorAll('[data-pk-size]')).map(el=>({ size: el.dataset.pkSize, qty: parseFloat(el.value)||0 })).filter(l=>l.qty>0);
+      if (!lines.length) { toast('Kam se kam ek size ki quantity daalein'); return; }
+      let ok = true;
+      lines.forEach(l=>{ if (!posAddToCart(item, l.size, l.qty)) ok = false; });
+      if (!ok) return;
+      close();
+      renderInventoryBilling();
+    });
+  }
+  // Student ki class ke hisaab se poora kit (books + copy + uniform) ek click me cart me
+  function posKitModal(){
+    const st = posStudentPick ? students.find(x=>x.id===posStudentPick) : null;
+    if (!st) { toast('Pehle student select karein'); return; }
+    const list = inventoryItems.filter(i=> Array.isArray(i.classes) && i.classes.includes(st.cls));
+    if (!list.length) { toast(`Class ${st.cls} ke liye koi Class-Kit item set nahi hai — Item edit karke classes chunein`); return; }
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="ekps-kit-bg">
+        <div class="modal modal-lg" style="width:680px;">
+          <div class="modal-head"><h3>📚 Class Kit — ${esc(st.name)} (${esc(st.cls)})</h3><div class="icon-btn" id="ekps-kit-close">✕</div></div>
+          <div class="modal-body">
+            <div class="hint" style="margin-bottom:8px;">Jo item chahiye wahi tick rakhein; sized items me size chunein.</div>
+            ${list.map(i=>{
+              const sizes = itemHasSizes(i) ? itemSizes(i).filter(sz=>itemSizeStock(i.id,sz)>0) : [];
+              const stock = itemHasSizes(i) ? sizes.reduce((a,sz)=>a+itemSizeStock(i.id,sz),0) : itemStock(i.id);
+              return `<div class="kit-row">
+                <input type="checkbox" data-kit-chk="${i.id}" ${stock>0?'checked':'disabled'}/>
+                <span style="font-weight:600;">${esc(i.name)}<div style="font-size:10.5px; color:var(--slate); font-weight:400;">${stock>0 ? stock+' '+esc(i.unit)+' stock' : 'Out of stock'}</div></span>
+                ${itemHasSizes(i) ? `<select data-kit-size="${i.id}">${sizes.map(sz=>`<option value="${esc(sz)}">${esc(sz)} (${itemSizeStock(i.id,sz)})</option>`).join('')}</select>` : '<span></span>'}
+                <input type="number" min="1" value="1" data-kit-qty="${i.id}" ${stock>0?'':'disabled'}/>
+                <span class="mono" style="text-align:right;">${fmt(i.unitPrice)}</span>
+              </div>`;
+            }).join('')}
+          </div>
+          <div class="modal-foot">
+            <span class="btn btn-ghost" id="ekps-kit-cancel">Cancel</span>
+            <span class="btn btn-accent" id="ekps-kit-add">Cart me add karein</span>
+          </div>
+        </div>
+      </div>`;
+    const close = ()=>{ modalRoot.innerHTML=''; };
+    document.getElementById('ekps-kit-close').addEventListener('click', close);
+    document.getElementById('ekps-kit-cancel').addEventListener('click', close);
+    document.getElementById('ekps-kit-add').addEventListener('click', ()=>{
+      let added = 0;
+      list.forEach(i=>{
+        const chk = modalRoot.querySelector(`[data-kit-chk="${i.id}"]`);
+        if (!chk || !chk.checked || chk.disabled) return;
+        const qty = Math.max(1, parseFloat(modalRoot.querySelector(`[data-kit-qty="${i.id}"]`).value)||1);
+        const szEl = modalRoot.querySelector(`[data-kit-size="${i.id}"]`);
+        if (posAddToCart(i, szEl ? szEl.value : '', qty)) added++;
+      });
+      if (!added) { toast('Kuch add nahi hua'); return; }
+      toast(`${added} item cart me add ho gaye`);
+      close();
+      renderInventoryBilling();
+    });
+  }
+  function sendInvoiceWhatsApp(invId){
+    const inv = salesInvoices.find(v=>v.id===invId);
+    if (!inv) { toast('Invoice nahi mila'); return; }
+    let mob = inv.customerPhone;
+    if (!waPhone(mob) && inv.studentId) { const st = findStudentById(inv.studentId); mob = st ? st.mobNo : ''; }
+    const phone = waPhone(mob);
+    if (!phone) { toast('Is customer ka mobile number nahi hai'); return; }
+    const lines = [
+      `*${schoolSettings.name}*`,
+      `Bill / Invoice: ${inv.invNo}`,
+      `Date: ${fmtDate(inv.date)}`,
+      `Customer: ${inv.customerName||'Walk-in'}`,
+      '',
+      ...(inv.items||[]).map(it=>`• ${it.name}${it.size?' ('+it.size+')':''} × ${it.qty} = ${fmt(it.qty*it.price)}`),
+      '',
+      ...((inv.discount||0)>0 ? [`Discount: -${fmt(inv.discount)}`] : []),
+      `Total: *${fmt(invoiceTotal(inv))}*`,
+      `Received: ${fmt(invoiceReceived(inv))}`,
+      ...(invoiceDue(inv)>0 ? [`Baaki (Due): *${fmt(invoiceDue(inv))}*`] : []),
+      '',
+      'Dhanyavaad! — Accounts Office'
+    ];
+    if (schoolSettings.waCustomMessage) { lines.push(''); lines.push(schoolSettings.waCustomMessage); }
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank');
+  }
+
   function printInvoiceChoiceModal(invId){
     modalRoot.innerHTML = `
       <div class="modal-backdrop" id="ekps-pi-bg">
@@ -3935,23 +4301,24 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
               <span class="btn btn-primary" id="pi-thermal" style="flex:1; justify-content:center;">🧾 Thermal Receipt</span>
               <span class="btn btn-accent" id="pi-a4" style="flex:1; justify-content:center;">📄 A4 PDF Invoice</span>
             </div>
+            <div style="margin-top:10px;"><span class="btn btn-ghost" id="pi-wa" style="width:100%; justify-content:center;">📲 WhatsApp par Bill bhejein</span></div>
           </div>
           <div class="modal-foot"><span class="btn btn-ghost" id="ekps-pi-cancel">Skip / Close</span></div>
         </div>
       </div>`;
     const close = ()=>{ modalRoot.innerHTML=''; };
-    document.getElementById('ekps-pi-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-pi-bg') close(); });
     document.getElementById('ekps-pi-close').addEventListener('click', close);
     document.getElementById('ekps-pi-cancel').addEventListener('click', close);
     document.getElementById('pi-thermal').addEventListener('click', ()=>{ printInvoiceThermal(invId); close(); });
     document.getElementById('pi-a4').addEventListener('click', ()=>{ printInvoiceA4(invId); close(); });
+    document.getElementById('pi-wa').addEventListener('click', ()=>{ sendInvoiceWhatsApp(invId); });
   }
 
   function printInvoiceThermal(invId){
     const inv = salesInvoices.find(v=>v.id===invId);
     if (!inv) { toast('Invoice nahi mila'); return; }
     const rows = inv.items.map(it=>`
-      <div class="ti-row"><span>${esc(it.name)}</span></div>
+      <div class="ti-row"><span>${esc(it.name)}${it.size?' ('+esc(it.size)+')':''}</span></div>
       <div class="ti-row ti-sub"><span>${it.qty} x ${fmt(it.price)}</span><span>${fmt(it.qty*it.price)}</span></div>`).join('');
     const win = window.open('', '_blank');
     if (!win) { toast('Popup block ho gaya — popup allow karein'); return; }
@@ -3999,7 +4366,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     const inv = salesInvoices.find(v=>v.id===invId);
     if (!inv) { toast('Invoice nahi mila'); return; }
     const rows = inv.items.map((it,idx)=>`<tr>
-      <td>${idx+1}</td><td>${esc(it.name)}</td><td class="r">${it.qty} ${esc(it.unit||'')}</td>
+      <td>${idx+1}</td><td>${esc(it.name)}${it.size?' ('+esc(it.size)+')':''}</td><td class="r">${it.qty} ${esc(it.unit||'')}</td>
       <td class="r">${fmt(it.price)}</td><td class="r">${fmt(it.qty*it.price)}</td></tr>`).join('');
     const win = window.open('', '_blank');
     if (!win) { toast('Popup block ho gaya — popup allow karein'); return; }
@@ -4077,7 +4444,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
               <div style="font-size:12px; color:var(--slate); margin-bottom:10px;">Customer: <strong>${esc(inv.customerName||'Walk-in')}</strong></div>
               ${rows.length ? rows.map((r,idx)=>`
                 <div class="cart-row" style="align-items:center;">
-                  <span class="cr-nm">${esc(r.it.name)}<div style="font-size:10.5px; color:var(--slate); font-weight:400;">Sold: ${r.it.qty} ${esc(r.it.unit||'')} &middot; Returnable: ${r.returnable}</div></span>
+                  <span class="cr-nm">${esc(r.it.name)}${r.it.size?' ('+esc(r.it.size)+')':''}<div style="font-size:10.5px; color:var(--slate); font-weight:400;">Sold: ${r.it.qty} ${esc(r.it.unit||'')} &middot; Returnable: ${r.returnable}</div></span>
                   <input type="number" min="0" max="${r.returnable}" class="cr-qty" data-rtn-qty="${idx}" value="0" ${r.returnable<=0?'disabled':''}/>
                   <span class="cr-price">${fmt(r.it.price)}</span>
                 </div>`).join('') : `<div class="empty-state">Is invoice me koi item nahi hai</div>`}
@@ -4091,7 +4458,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
           </div>
         </div>`;
       const close = ()=>{ modalRoot.innerHTML=''; };
-      document.getElementById('ekps-rtn-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-rtn-bg') close(); });
       document.getElementById('ekps-rtn-close').addEventListener('click', close);
       document.getElementById('ekps-rtn-cancel').addEventListener('click', close);
       document.getElementById('ekps-rtn-save').addEventListener('click', ()=>{
@@ -4103,7 +4469,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
           const qty = Math.min(r.returnable, Math.max(0, parseFloat(qtyEl.value)||0));
           if (qty > 0) {
             anyReturned = true;
-            inventoryTxns.push({ id: Date.now()+Math.floor(Math.random()*1000), itemId: r.it.itemId, type:'in', qty, date,
+            inventoryTxns.push({ id: Date.now()+Math.floor(Math.random()*1000), itemId: r.it.itemId, type:'in', qty, date, size: r.it.size||'',
               note: `Return — ${inv.invNo}${reason?' — '+reason:''}`, source:'return', refId: inv.id });
             refundValue += qty * r.it.price;
           }
@@ -4145,14 +4511,16 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
   function damageModal(itemId){
     const item = inventoryItems.find(i=>i.id===itemId);
     if (!item) return;
+    const sized = itemHasSizes(item);
     modalRoot.innerHTML = `
       <div class="modal-backdrop" id="ekps-dmg-bg">
         <div class="modal">
           <div class="modal-head"><h3>Mark Item as Damaged</h3><div class="icon-btn" id="ekps-dmg-close">✕</div></div>
           <div class="modal-body">
             <div class="field"><label>Item</label><input type="text" value="${esc(item.name)} (Current stock: ${itemStock(item.id)} ${esc(item.unit)})" disabled/></div>
+            ${sized ? `<div class="field"><label>Size</label><select id="dmg-size">${itemSizes(item).map(sz=>`<option value="${esc(sz)}">${esc(sz)} (stock: ${itemSizeStock(item.id, sz)})</option>`).join('')}</select></div>` : ''}
             <div class="form-grid">
-              <div class="field"><label>Quantity Damaged</label><input type="number" id="dmg-qty" min="1" max="${itemStock(item.id)}" placeholder="e.g. 2"/></div>
+              <div class="field"><label>Quantity Damaged</label><input type="number" id="dmg-qty" min="1" placeholder="e.g. 2"/></div>
               <div class="field"><label>Date</label><input type="date" id="dmg-date" value="${todayISO()}"/></div>
             </div>
             <div class="field"><label>Reason</label><input type="text" id="dmg-reason" placeholder="e.g. Paani se bhig gaya / Torn pages"/></div>
@@ -4164,16 +4532,16 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
         </div>
       </div>`;
     const close = ()=>{ modalRoot.innerHTML=''; };
-    document.getElementById('ekps-dmg-bg').addEventListener('click', e=>{ if(e.target.id==='ekps-dmg-bg') close(); });
     document.getElementById('ekps-dmg-close').addEventListener('click', close);
     document.getElementById('ekps-dmg-cancel').addEventListener('click', close);
     document.getElementById('ekps-dmg-save').addEventListener('click', ()=>{
       const qty = parseFloat(document.getElementById('dmg-qty').value);
       const date = document.getElementById('dmg-date').value || todayISO();
       const reason = document.getElementById('dmg-reason').value.trim() || 'Damaged stock';
+      const size = sized ? document.getElementById('dmg-size').value : '';
       if (!qty || qty<=0) { toast('Sahi quantity daalein'); return; }
-      if (qty > itemStock(item.id)) { toast('Itna stock available nahi hai'); return; }
-      inventoryTxns.push({ id: Date.now(), itemId: item.id, type:'out', qty, date, note: reason, source:'damage', createdBy: currentUserRole });
+      if (qty > posStockOf(item, size)) { toast('Itna stock available nahi hai'); return; }
+      inventoryTxns.push({ id: Date.now(), itemId: item.id, type:'out', qty, date, size, note: reason, source:'damage', createdBy: currentUserRole });
       saveInventoryTxns();
       toast('Damage entry saved — stock adjusted');
       close();
@@ -4203,11 +4571,20 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
 
   function exportStockReport(){
     if (!inventoryItems.length) { toast('Koi item nahi hai'); return; }
-    const rows = inventoryItems.map(i=>({
-      'Item Name': i.name, 'Category': i.category, 'Unit': i.unit, 'Unit Price': i.unitPrice,
-      'Current Stock': itemStock(i.id), 'Stock Value': itemStock(i.id)*i.unitPrice,
-      'Reorder Level': i.reorderLevel, 'Status': itemStatus(i)==='InStock'?'In Stock':itemStatus(i)
-    }));
+    const rows = [];
+    inventoryItems.forEach(i=>{
+      const mk = (size, stock)=>({
+        'Item Name': i.name, 'SKU / Barcode': i.sku||'', 'Category': i.category, 'Size': size, 'Unit': i.unit,
+        'Sale Price': i.unitPrice, 'Cost Price': i.costPrice||0,
+        'Current Stock': stock, 'Stock Value': stock*i.unitPrice,
+        'Reorder Level': i.reorderLevel, 'Status': stock<=0 ? 'Out of Stock' : (stock<=(i.reorderLevel||0) ? 'Low Stock' : 'In Stock')
+      });
+      if (itemHasSizes(i)) {
+        itemSizes(i).forEach(sz=> rows.push(mk(sz, itemSizeStock(i.id, sz))));
+        const loose = itemSizeStock(i.id, '');
+        if (loose !== 0) rows.push(mk('Bina size', loose));
+      } else rows.push(mk('', itemStock(i.id)));
+    });
     exportRows('Stock_Report', rows, Object.keys(rows[0]));
   }
   function exportPurchaseReport(){
@@ -4218,7 +4595,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
       (p.items||[]).forEach(it=>{
         const item = inventoryItems.find(i=>i.id===it.itemId);
         rows.push({ 'PO No.': p.poNo, 'Date': fmtDate(p.date), 'Vendor': v?v.name:'—',
-          'Item': item?item.name:'—', 'Qty': it.qty, 'Price': it.price, 'Line Total': it.qty*it.price });
+          'Item': item?item.name:'—', 'Size': it.size||'', 'Qty': it.qty, 'Price': it.price, 'Line Total': it.qty*it.price });
       });
     });
     exportRows('Purchase_Report', rows, Object.keys(rows[0]));
@@ -4229,7 +4606,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     salesInvoices.forEach(inv=>{
       (inv.items||[]).forEach(it=>{
         rows.push({ 'Invoice No.': inv.invNo, 'Date': fmtDate(inv.date), 'Customer': inv.customerName||'Walk-in',
-          'Item': it.name, 'Qty': it.qty, 'Price': it.price, 'Line Total': it.qty*it.price,
+          'Item': it.name, 'Size': it.size||'', 'Qty': it.qty, 'Price': it.price, 'Line Total': it.qty*it.price,
           'Payment Mode': inv.paymentMode, 'Received': invoiceReceived(inv), 'Due': invoiceDue(inv) });
       });
     });
@@ -4241,7 +4618,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     const rows = txns.slice().sort((a,b)=>a.id-b.id).map(t=>{
       const item = inventoryItems.find(i=>i.id===t.itemId);
       return { 'Date': fmtDate(t.date), 'Type': t.source==='return'?'Return':'Damage', 'Item': item?item.name:'Deleted Item',
-        'Qty': t.qty, 'Value': item ? t.qty*item.unitPrice : 0, 'Note': t.note||'' };
+        'Size': t.size||'', 'Qty': t.qty, 'Value': item ? t.qty*item.unitPrice : 0, 'Note': t.note||'' };
     });
     exportRows('Returns_Damage_Report', rows, Object.keys(rows[0]));
   }
@@ -4258,7 +4635,7 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     const rows = inventoryTxns.slice().sort((a,b)=>a.id-b.id).map(t=>{
       const item = inventoryItems.find(i=>i.id===t.itemId);
       return { 'Date': fmtDate(t.date), 'Item': item?item.name:'Deleted Item', 'Type': t.type==='in'?'Stock In':'Stock Out',
-        'Qty': t.qty, 'Source': t.source||'manual', 'Note': t.note||'' };
+        'Size': t.size||'', 'Qty': t.qty, 'Source': t.source||'manual', 'Note': t.note||'' };
     });
     exportRows('Stock_Log_Report', rows, Object.keys(rows[0]));
   }
@@ -4599,7 +4976,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     const close = ()=>{ modalRoot.innerHTML=''; };
     document.getElementById('ekps-cwm-close').addEventListener('click', close);
     document.getElementById('ekps-cwm-cancel').addEventListener('click', close);
-    document.getElementById('ekps-cwm-bg').addEventListener('click', (e)=>{ if (e.target.id==='ekps-cwm-bg') close(); });
     document.getElementById('ekps-cwm-generate').addEventListener('click', ()=>{
       const cls = document.getElementById('cwm-class').value;
       const month = document.getElementById('cwm-month').value;
@@ -4650,7 +5026,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     const close = ()=>{ modalRoot.innerHTML=''; };
     document.getElementById('ekps-sdm-close').addEventListener('click', close);
     document.getElementById('ekps-sdm-cancel').addEventListener('click', close);
-    document.getElementById('ekps-sdm-bg').addEventListener('click', (e)=>{ if (e.target.id==='ekps-sdm-bg') close(); });
     document.getElementById('ekps-sdm-generate').addEventListener('click', ()=>{
       const month = document.getElementById('sdm-month').value;
       close();
@@ -4687,7 +5062,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     const close = ()=>{ modalRoot.innerHTML=''; };
     document.getElementById('ekps-smd-close').addEventListener('click', close);
     document.getElementById('ekps-smd-cancel').addEventListener('click', close);
-    document.getElementById('ekps-smd-bg').addEventListener('click', (e)=>{ if (e.target.id==='ekps-smd-bg') close(); });
     document.getElementById('ekps-smd-generate').addEventListener('click', ()=>{
       const month = document.getElementById('smd-month').value;
       close();
@@ -4762,7 +5136,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     const close = ()=>{ modalRoot.innerHTML=''; };
     document.getElementById('ekps-dn-close').addEventListener('click', close);
     document.getElementById('ekps-dn-cancel').addEventListener('click', close);
-    document.getElementById('ekps-dn-bg').addEventListener('click', (e)=>{ if (e.target.id==='ekps-dn-bg') close(); });
     document.getElementById('ekps-dn-save').addEventListener('click', ()=>{
       schoolSettings = { ...schoolSettings, demandBillNotice: document.getElementById('dn-text').value.trim() };
       saveSchoolSettings();
@@ -4793,7 +5166,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     const close = ()=>{ modalRoot.innerHTML=''; };
     document.getElementById('ekps-wan-close').addEventListener('click', close);
     document.getElementById('ekps-wan-cancel').addEventListener('click', close);
-    document.getElementById('ekps-wan-bg').addEventListener('click', (e)=>{ if (e.target.id==='ekps-wan-bg') close(); });
     document.getElementById('ekps-wan-save').addEventListener('click', ()=>{
       schoolSettings = { ...schoolSettings, waCustomMessage: document.getElementById('wan-text').value.trim() };
       saveSchoolSettings();
@@ -4854,7 +5226,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     inp.focus();
     document.getElementById('ekps-ph-close').addEventListener('click', close);
     document.getElementById('ekps-ph-cancel').addEventListener('click', close);
-    document.getElementById('ekps-ph-bg').addEventListener('click', e=>{ if (e.target.id==='ekps-ph-bg') close(); });
     const save = ()=>{
       let d = (inp.value||'').replace(/\D/g,'');
       if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
@@ -4990,7 +5361,6 @@ if (window.__EKPS_PAY_MODE) { throw new Error('EKPS pay page mode: app skipped')
     });
     refresh();
     document.getElementById('ekps-qr-close').addEventListener('click', close);
-    document.getElementById('ekps-qr-bg').addEventListener('click', e=>{ if (e.target.id==='ekps-qr-bg') close(); });
 
     const okAmt = ()=>{ const a = getAmt(); if (a<=0) { toast('Sahi amount daalein'); return 0; } return a; };
     const fileName = (a)=> `UPI_QR_${String(s.name).replace(/[^A-Za-z0-9]+/g,'_')}_${a}.png`;
